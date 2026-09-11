@@ -999,6 +999,20 @@ body {
   cursor: pointer;
 }
 
+.settings-version-row {
+  text-align: center;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.settings-version-row strong {
+  color: var(--primary-light);
+  font-weight: 600;
+}
+
 /* ══════════ NAME PROMPT MODAL ══════════ */
 .name-modal-icon {
   text-align: center;

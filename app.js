@@ -14,6 +14,7 @@
    Configuration & Quality Presets
    ═══════════════════════════════════════════ */
 const CONFIG = {
+  VERSION: '1.1.0',
   DB_NAME: 'KuberanScannerDB',
   DB_VERSION: 1,
   STORE_NAME: 'photos',
