@@ -1009,6 +1009,17 @@ body {
   border-radius: 16px;
 }
 
+.name-modal-desc {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  text-align: center;
+  margin-bottom: 14px;
+}
+
+.name-modal-desc strong {
+  color: var(--text);
+}
+
 #modal-name .modal-actions {
   margin-top: 16px;
 }
