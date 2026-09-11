@@ -3,7 +3,7 @@
  * Cache-first strategy for app shell, network-first for external resources
  */
 
-const CACHE_NAME = 'kuberan-scanner-v5';
+const CACHE_NAME = 'kuberan-scanner-v6';
 
 /** App shell files to pre-cache */
 const APP_SHELL = [

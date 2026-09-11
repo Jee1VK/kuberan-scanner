@@ -24,18 +24,20 @@
           <img src="icons/icon.svg" alt="" width="56" height="56">
         </div>
         <h3 id="name-title">Welcome to Kuberan Scanner</h3>
-        <p class="text-muted">Please enter your name to begin:</p>
-        <input
-          type="text"
-          id="input-user-name"
-          class="input"
-          placeholder="e.g. Jeevan"
-          autocomplete="name"
-          autofocus
-        >
-        <div class="modal-actions">
-          <button id="btn-name-submit" class="btn btn-primary" style="width:100%">Start Scanning</button>
-        </div>
+        <form id="form-user-name" autocomplete="on">
+          <input
+            type="text"
+            id="input-user-name"
+            class="input"
+            placeholder="e.g. Jeevan"
+            autocomplete="name"
+            autofocus
+            required
+          >
+          <div class="modal-actions">
+            <button type="submit" id="btn-name-submit" class="btn btn-primary" style="width:100%">Start Scanning</button>
+          </div>
+        </form>
       </div>
     </div>
 
@@ -102,10 +104,13 @@
           <p id="scan-hint">Point camera at a barcode</p>
         </div>
 
-        <!-- Captured photo preview (shown during Step 2) -->
+        <!-- Captured photo floating preview (shown during Step 2) -->
         <div id="photo-preview-overlay" hidden>
           <img id="photo-preview-img" src="" alt="Captured product photo">
-          <div class="preview-badge">✓ Photo captured — now scan barcode</div>
+          <div class="preview-info">
+            <span class="preview-badge">✓ Photo captured</span>
+            <button type="button" id="btn-retake-step" class="btn-preview-retake" title="Retake this photo">Retake</button>
+          </div>
         </div>
 
         <!-- Camera not available message -->
@@ -214,14 +219,22 @@
         <img id="lightbox-img" src="" alt="Product Photo Preview">
       </div>
       <div class="lightbox-footer">
-        <button id="btn-lightbox-rotate" class="btn btn-secondary" title="Rotate 90 degrees">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 11-.57-8.38l5.67-5.67"/>
+        <button type="button" id="btn-lightbox-rotate" class="btn btn-secondary" title="Rotate 90 degrees">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="23 4 23 10 17 10"/>
+            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
           </svg>
           <span>Rotate 90°</span>
         </button>
-        <button id="btn-lightbox-delete" class="btn btn-danger" title="Delete photo">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <button type="button" id="btn-lightbox-retake" class="btn btn-secondary" title="Retake this photo">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/>
+            <circle cx="12" cy="13" r="4"/>
+          </svg>
+          <span>Retake</span>
+        </button>
+        <button type="button" id="btn-lightbox-delete" class="btn btn-danger" title="Delete photo">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="3 6 5 6 21 6"/>
             <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
           </svg>

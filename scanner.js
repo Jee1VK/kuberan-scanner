@@ -107,10 +107,16 @@ class BarcodeScanner {
 
       // Wait for video to play
       await new Promise((resolve, reject) => {
-        this.video.onloadedmetadata = () => {
+        const timeout = setTimeout(() => reject(new Error('Camera timed out')), 10000);
+        const onReady = () => {
+          clearTimeout(timeout);
           this.video.play().then(resolve).catch(reject);
         };
-        setTimeout(() => reject(new Error('Camera timed out')), 10000);
+        if (this.video.readyState >= 1) {
+          onReady();
+        } else {
+          this.video.onloadedmetadata = onReady;
+        }
       });
 
       // Apply initial zoom

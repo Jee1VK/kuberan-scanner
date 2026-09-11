@@ -71,6 +71,8 @@ let db = null;
 let userName = '';                // Asked every time app opens
 let currentStep = STEP.PHOTO;    // Current workflow step
 let pendingPhotoBlob = null;     // Photo captured in Step 1, waiting for barcode in Step 2
+let previewBlobUrl = null;       // Active blob URL for floating preview in Step 2
+let retakeTargetBarcode = null;  // When retaking from lightbox
 let activeLightboxPhoto = null;
 let deferredInstallPrompt = null;
 let searchQuery = '';
@@ -85,6 +87,7 @@ const $$ = (sel) => document.querySelectorAll(sel);
 const dom = {
   // Name prompt
   nameOverlay:      $('#modal-name-overlay'),
+  formUserName:     $('#form-user-name'),
   inputUserName:    $('#input-user-name'),
   btnNameSubmit:    $('#btn-name-submit'),
   userGreeting:     $('#user-greeting'),
@@ -117,6 +120,7 @@ const dom = {
   btnRetryCamera:   $('#btn-retry-camera'),
   photoPreview:     $('#photo-preview-overlay'),
   photoPreviewImg:  $('#photo-preview-img'),
+  btnRetakeStep:    $('#btn-retake-step'),
 
   // Gallery
   gallery:          $('#photo-gallery'),
@@ -137,6 +141,7 @@ const dom = {
   lightboxSize:     $('#lightbox-size'),
   btnLightboxClose: $('#btn-lightbox-close'),
   btnLightboxRotate:$('#btn-lightbox-rotate'),
+  btnLightboxRetake:$('#btn-lightbox-retake'),
   btnLightboxDelete:$('#btn-lightbox-delete'),
 
   // Settings Modal
@@ -327,13 +332,23 @@ function setStep(step) {
     // Step 1: Take Product Photo
     dom.stepBadge.className = 'step-badge step-photo';
     dom.stepBadge.querySelector('.step-number').textContent = '1';
-    dom.stepBadge.querySelector('.step-text').textContent = 'Take Product Photo';
+    dom.stepBadge.querySelector('.step-text').textContent = retakeTargetBarcode 
+      ? `Retaking for ${retakeTargetBarcode}`
+      : 'Take Product Photo';
     dom.btnActionText.textContent = 'Snap Photo';
     dom.btnManualEntry.hidden = true;
     dom.scanOverlay.hidden = true;
-    dom.photoPreview.hidden = true;
     dom.scanStatus.hidden = true;
     dom.scanFrame.classList.remove('scanning', 'success');
+
+    // Clean up preview overlay
+    dom.photoPreview.hidden = true;
+    if (previewBlobUrl) {
+      URL.revokeObjectURL(previewBlobUrl);
+      previewBlobUrl = null;
+    }
+    dom.photoPreviewImg.src = '';
+
   } else if (step === STEP.BARCODE) {
     // Step 2: Scan Barcode
     dom.stepBadge.className = 'step-badge step-barcode';
@@ -343,10 +358,11 @@ function setStep(step) {
     dom.btnManualEntry.hidden = false;
     dom.scanOverlay.hidden = false;
 
-    // Show captured photo thumbnail
+    // Show floating captured photo thumbnail with retake option
     if (pendingPhotoBlob) {
-      const url = URL.createObjectURL(pendingPhotoBlob);
-      dom.photoPreviewImg.src = url;
+      if (previewBlobUrl) URL.revokeObjectURL(previewBlobUrl);
+      previewBlobUrl = URL.createObjectURL(pendingPhotoBlob);
+      dom.photoPreviewImg.src = previewBlobUrl;
       dom.photoPreview.hidden = false;
     }
   }
@@ -356,13 +372,16 @@ function setStep(step) {
    Event Binding
    ═══════════════════════════════════════════ */
 function bindEvents() {
-  // Name prompt
+  // Name prompt (form submit supports virtual keyboard 'Go/Done' key)
+  if (dom.formUserName) {
+    dom.formUserName.addEventListener('submit', (e) => {
+      e.preventDefault();
+      handleNameSubmit();
+    });
+  }
   dom.btnNameSubmit.addEventListener('click', handleNameSubmit);
-  dom.inputUserName.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') handleNameSubmit();
-  });
 
-  // Main action button (Step 1: Snap Photo, Step 2: shows scanning state)
+  // Main action button (Step 1: Snap Photo, Step 2: opens manual entry)
   dom.btnAction.addEventListener('click', handleActionButton);
 
   // Flash
@@ -370,6 +389,11 @@ function bindEvents() {
 
   // Manual barcode entry (only visible during Step 2)
   dom.btnManualEntry.addEventListener('click', openManualEntryModal);
+
+  // Retake photo during Step 2
+  if (dom.btnRetakeStep) {
+    dom.btnRetakeStep.addEventListener('click', handleRetakeCurrentStep);
+  }
 
   // Retry camera
   dom.btnRetryCamera.addEventListener('click', initCamera);
@@ -429,6 +453,9 @@ function bindEvents() {
     dom.confirmOverlay.hidden = true;
   });
   dom.btnConfirmCancel.addEventListener('click', () => { dom.confirmOverlay.hidden = true; });
+  dom.confirmOverlay.addEventListener('click', (e) => {
+    if (e.target === dom.confirmOverlay) dom.confirmOverlay.hidden = true;
+  });
 
   // Lightbox
   dom.btnLightboxClose.addEventListener('click', closeLightbox);
@@ -436,6 +463,9 @@ function bindEvents() {
     if (e.target === dom.lightbox || e.target.classList.contains('lightbox-body')) closeLightbox();
   });
   dom.btnLightboxRotate.addEventListener('click', handleLightboxRotate);
+  if (dom.btnLightboxRetake) {
+    dom.btnLightboxRetake.addEventListener('click', handleLightboxRetake);
+  }
   dom.btnLightboxDelete.addEventListener('click', handleLightboxDelete);
 
   // Settings
@@ -475,6 +505,9 @@ function bindEvents() {
       closeSettingsModal();
       closeModal();
       dom.confirmOverlay.hidden = true;
+      if (currentStep === STEP.BARCODE && !pendingPhotoBlob) {
+        setStep(STEP.PHOTO);
+      }
     }
   });
 }
@@ -506,6 +539,25 @@ async function handleActionButton() {
       return;
     }
 
+    // If retaking an already existing photo from lightbox:
+    if (retakeTargetBarcode) {
+      const targetPhoto = photos.find(p => p.barcode === retakeTargetBarcode);
+      if (targetPhoto) {
+        if (targetPhoto._blobUrl) URL.revokeObjectURL(targetPhoto._blobUrl);
+        targetPhoto.blob = blob;
+        targetPhoto.size = blob.size;
+        targetPhoto._blobUrl = URL.createObjectURL(blob);
+        targetPhoto.timestamp = Date.now();
+        await persistPhoto(targetPhoto);
+        renderGallery();
+        updateStats();
+        showToast(`✓ Photo updated for ${retakeTargetBarcode} (${formatSize(blob.size)})`, 'success');
+      }
+      retakeTargetBarcode = null;
+      setStep(STEP.PHOTO);
+      return;
+    }
+
     pendingPhotoBlob = blob;
     showToast(`📸 Photo captured (${formatSize(blob.size)}) — now scan barcode`, 'success');
 
@@ -519,6 +571,13 @@ async function handleActionButton() {
     // In Step 2, tapping the button opens manual entry
     openManualEntryModal();
   }
+}
+
+function handleRetakeCurrentStep() {
+  if (scanner) scanner.stopContinuousScan();
+  pendingPhotoBlob = null;
+  setStep(STEP.PHOTO);
+  showToast('Photo discarded. Ready to take new photo.');
 }
 
 async function startBarcodeScanning() {
@@ -690,12 +749,12 @@ function renderGallery() {
     if (!photo._blobUrl) photo._blobUrl = URL.createObjectURL(photo.blob);
     return `
       <div class="photo-item" data-id="${photo.id}" title="Tap to inspect">
-        <img src="${photo._blobUrl}" alt="${photo.barcode}" loading="lazy">
+        <img src="${photo._blobUrl}" alt="${escapeHtml(photo.barcode)}" loading="lazy">
         <div class="photo-label">
           <span class="photo-name">${escapeHtml(photo.fileName)}</span>
           <span class="photo-size">${formatSize(photo.size)}</span>
         </div>
-        <button class="btn-delete" data-id="${photo.id}" aria-label="Delete ${photo.fileName}">×</button>
+        <button class="btn-delete" data-id="${photo.id}" aria-label="Delete ${escapeHtml(photo.fileName)}">×</button>
       </div>
     `;
   }).join('');
@@ -746,6 +805,15 @@ async function handleLightboxRotate() {
   } finally {
     dom.btnLightboxRotate.disabled = false;
   }
+}
+
+function handleLightboxRetake() {
+  if (!activeLightboxPhoto) return;
+  retakeTargetBarcode = activeLightboxPhoto.barcode;
+  closeLightbox();
+  setStep(STEP.PHOTO);
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+  showToast(`Retaking photo for ${retakeTargetBarcode}. Tap Snap Photo`);
 }
 
 function handleLightboxDelete() {
