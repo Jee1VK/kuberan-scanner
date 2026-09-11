@@ -35,6 +35,7 @@ The app uses a guided 2-step capture loop for every product:
 - **🎛️ Compression Presets** — Compact (~60 KB), Balanced (~120 KB), or High (~250 KB) in Settings.
 - **🔎 Live Gallery Search** — Instant filter by barcode number or filename.
 - **🔍 Camera Zoom & Lens Switching** — 1x/2x zoom and multi-lens toggle for wide/standard cameras.
+- **🚫 Strict Duplicate Barcode Protection** — Scanning an already photographed barcode is strictly blocked with a red visual flash, buzzer alarm, and warning toast so every barcode is 100% unique.
 - **💾 Offline PWA** — Works offline in warehouse environments and can be installed directly to home screens.
 
 ---

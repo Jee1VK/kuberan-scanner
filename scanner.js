@@ -59,6 +59,10 @@ class BarcodeScanner {
    */
   async init(preferredDeviceId = null) {
     try {
+      this.hasHardwareZoom = false;
+      this.zoomMin = 1.0;
+      this.zoomMax = 3.0;
+
       // Discover available cameras
       try {
         const devices = await navigator.mediaDevices.enumerateDevices();

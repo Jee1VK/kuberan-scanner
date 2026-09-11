@@ -115,6 +115,8 @@ const dom = {
   btnSwitchCamera:  $('#btn-switch-camera'),
   btnAction:        $('#btn-action'),
   btnActionText:    $('#btn-action-text'),
+  btnActionIconCamera: $('#btn-action-icon-camera'),
+  btnActionIconBarcode: $('#btn-action-icon-barcode'),
   btnFlash:         $('#btn-flash'),
   btnManualEntry:   $('#btn-manual-entry'),
   btnRetryCamera:   $('#btn-retry-camera'),
@@ -356,6 +358,8 @@ function setStep(step) {
       ? `Retaking for ${retakeTargetBarcode}`
       : 'Take Product Photo';
     dom.btnActionText.textContent = 'Snap Photo';
+    if (dom.btnActionIconCamera) dom.btnActionIconCamera.hidden = false;
+    if (dom.btnActionIconBarcode) dom.btnActionIconBarcode.hidden = true;
     dom.btnManualEntry.hidden = true;
     dom.scanOverlay.hidden = true;
     dom.scanStatus.hidden = true;
@@ -374,7 +378,9 @@ function setStep(step) {
     dom.stepBadge.className = 'step-badge step-barcode';
     dom.stepBadge.querySelector('.step-number').textContent = '2';
     dom.stepBadge.querySelector('.step-text').textContent = 'Now Scan Barcode';
-    dom.btnActionText.textContent = 'Scanning…';
+    dom.btnActionText.textContent = 'Enter Barcode';
+    if (dom.btnActionIconCamera) dom.btnActionIconCamera.hidden = true;
+    if (dom.btnActionIconBarcode) dom.btnActionIconBarcode.hidden = false;
     dom.btnManualEntry.hidden = false;
     dom.scanOverlay.hidden = false;
 
@@ -508,9 +514,7 @@ function bindEvents() {
   });
   dom.modalOverlay.addEventListener('click', (e) => {
     if (e.target === dom.modalOverlay) {
-      pendingPhotoBlob = null;
       closeModal();
-      setStep(STEP.PHOTO);
     }
   });
 
@@ -924,8 +928,16 @@ async function handleFlashToggle() {
    Zip & Share with Progress Bar
    ZIP Name: {UserName}_{Date}_{DailySerial}.zip
    ═══════════════════════════════════════════ */
+function getLocalDateStr() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 function getDailySerial() {
-  const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+  const today = getLocalDateStr();
   const key = 'kuberan_zip_serial';
   let data = {};
   try {
@@ -944,7 +956,7 @@ function getDailySerial() {
 
 function buildZipFileName() {
   const name = userName || 'Scanner';
-  const date = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+  const date = getLocalDateStr();
   const serial = getDailySerial();
   // Sanitize name: remove special chars
   const safeName = name.replace(/[^a-zA-Z0-9_-]/g, '_');
