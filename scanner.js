@@ -211,19 +211,17 @@ class BarcodeScanner {
   /* ──────────── Scanning ──────────── */
 
   /**
-   * Scan the current video frame for barcodes.
+   * Scan current video frame for barcodes.
+   * Directly uses video element to avoid canvas contention with photo capture.
    * @returns {Promise<{value: string, format: string}|null>}
    */
   async scanFrame() {
     if (!this._ready || !this.video.videoWidth) return null;
     if (!this.detector) return null;
 
-    this.canvas.width = this.video.videoWidth;
-    this.canvas.height = this.video.videoHeight;
-    this.ctx.drawImage(this.video, 0, 0);
-
     try {
-      const barcodes = await this.detector.detect(this.canvas);
+      // First attempt direct video detection (fastest, zero canvas overhead)
+      const barcodes = await this.detector.detect(this.video);
       if (barcodes.length > 0) {
         return {
           value: barcodes[0].rawValue,
@@ -231,7 +229,21 @@ class BarcodeScanner {
         };
       }
     } catch (err) {
-      console.debug('[Scanner] Frame scan error:', err.message);
+      // Fallback: draw frame to canvas and detect
+      try {
+        this.canvas.width = this.video.videoWidth;
+        this.canvas.height = this.video.videoHeight;
+        this.ctx.drawImage(this.video, 0, 0);
+        const barcodes = await this.detector.detect(this.canvas);
+        if (barcodes.length > 0) {
+          return {
+            value: barcodes[0].rawValue,
+            format: barcodes[0].format
+          };
+        }
+      } catch (innerErr) {
+        console.debug('[Scanner] Frame scan error:', innerErr.message);
+      }
     }
 
     return null;

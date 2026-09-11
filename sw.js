@@ -3,7 +3,7 @@
  * Cache-first strategy for app shell, network-first for external resources
  */
 
-const CACHE_NAME = 'kuberan-scanner-v3';
+const CACHE_NAME = 'kuberan-scanner-v4';
 
 /** App shell files to pre-cache */
 const APP_SHELL = [
@@ -13,22 +13,28 @@ const APP_SHELL = [
   './app.js',
   './scanner.js',
   './manifest.json',
-  './icons/icon.svg'
+  './icons/icon.svg',
+  './icons/icon-192.png',
+  './icons/icon-512.png'
 ];
 
-/** External resources to cache on first use */
+/** External resources to pre-cache */
 const EXTERNAL_RESOURCES = [
   'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js'
 ];
 
-/* ── Install: Pre-cache app shell ── */
+/* ── Install: Pre-cache app shell and dependencies ── */
 self.addEventListener('install', (event) => {
   console.log('[SW] Installing…');
   event.waitUntil(
     caches.open(CACHE_NAME)
-      .then((cache) => {
-        console.log('[SW] Pre-caching app shell');
-        return cache.addAll(APP_SHELL);
+      .then(async (cache) => {
+        console.log('[SW] Pre-caching app shell & dependencies');
+        try {
+          await cache.addAll([...APP_SHELL, ...EXTERNAL_RESOURCES]);
+        } catch (err) {
+          console.warn('[SW] Partial pre-cache failure (offline or missing file):', err);
+        }
       })
       .then(() => self.skipWaiting())
   );

@@ -544,6 +544,13 @@ async function captureAndPromptManual() {
     return;
   }
 
+  // If retaking an existing photo
+  if (retakeTargetId) {
+    await replaceExistingPhoto(retakeTargetId, blob);
+    retakeTargetId = null;
+    return;
+  }
+
   pendingPhotoBlob = blob;
   openManualEntryModal();
 }

@@ -4,7 +4,7 @@
   "description": "Scan product barcodes, capture & rename photos, zip and share",
   "start_url": "./",
   "scope": "./",
-  "id": "/kuberan-scanner/",
+  "id": "./",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#0F172A",

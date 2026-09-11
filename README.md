@@ -1,109 +1,116 @@
 # Kuberan Scanner 📱
 
-A Progressive Web App (PWA) for scanning product barcodes, capturing photos, renaming them by barcode number, and sharing as a zip file.
+A fast, lightweight Progressive Web App (PWA) designed for retail, warehouse, and catalog photography. Scan product barcodes, capture photos, auto-rename them by barcode/product number, compress them to lightweight KB sizes, and share them as a ZIP archive.
+
+Live Web App: **[https://jee1vk.github.io/kuberan-scanner/](https://jee1vk.github.io/kuberan-scanner/)**
+
+---
 
 ## ✨ Features
 
 - **📷 Barcode Scanning** — Auto-detect product barcodes using your phone's camera (Chrome Android)
-- **✏️ Manual Entry** — Type barcode numbers manually on any device
-- **🏷️ Auto-Rename** — Photos are automatically named by barcode (e.g., `8901234567890.jpg`)
-- **📦 Zip & Share** — Create a zip file and share via WhatsApp, Email, Google Drive, etc.
-- **💾 Auto-Save** — Photos persist across sessions using IndexedDB
-- **📲 Installable** — Add to home screen for native app experience
-- **🔌 Offline Ready** — Works without internet after first visit
-- **🔦 Flash Support** — Toggle flashlight for low-light scanning
+- **✏️ Manual Barcode Entry** — Type barcode/product numbers manually when barcodes are damaged or unreadable
+- **🏷️ Auto-Rename** — Photos are automatically renamed using the barcode (e.g., `8901234567890.jpg` or `8901234567890_002.jpg` for duplicates)
+- **🔊 Audio Chime & Haptic Vibration** — Authentic warehouse scanner beep (Web Audio API) and physical vibration upon barcode recognition
+- **📸 Shutter Flash & Sound** — Viewfinder screen flashes white for 120ms with an acoustic camera snap sound
+- **🔍 Full-Screen Photo Inspector (Lightbox)** — Tap any photo in the gallery to inspect in high resolution:
+  - **Rotate 90°:** Fix sideways photos on the spot
+  - **Retake:** Directly replace a blurry photo
+  - **Delete:** Remove individual photos
+- **🎛️ Compression Quality Picker** — Customize photo weight in Settings:
+  - **Compact (~60 KB):** Smallest size, minimal data usage
+  - **Balanced (~120 KB - Default):** Sharp detail while keeping zip archives lightweight
+  - **High (~250 KB):** High definition for e-commerce catalogs
+- **🔎 Live Gallery Search** — Quickly filter photos by typing barcode digits or filenames
+- **⚠️ Duplicate Barcode Alerts** — Warns you when a product barcode was already photographed
+- **🔍 Camera Zoom (1x / 2x)** — Quick zoom pills to capture small product labels without moving your phone
+- **🔄 Multi-Camera Lens Switcher** — Switch between available rear cameras (standard, wide, macro)
+- **📦 Zip & Share** — Compress all photos into a timestamped ZIP archive and share directly via WhatsApp, Gmail, Google Drive, or standard download
+- **💾 Offline & Session Persistence** — Photos and preferences survive page refreshes using IndexedDB & localStorage
+- **📲 Installable PWA** — Add to home screen for a full-screen, native mobile app experience without an app store
 
-## 🚀 Quick Start
+---
 
-### Option 1: GitHub Pages (Recommended)
+## 🚀 Deployment & Installation
 
-1. Fork this repository
+### Option 1: GitHub Pages (Free Hosting)
+
+1. Fork or push this repository to GitHub
 2. Go to **Settings → Pages**
-3. Set source to **Deploy from branch** → `main` → `/ (root)`
-4. Visit `https://yourusername.github.io/kuberan-scanner/`
-5. On your phone, tap **"Install"** or **"Add to Home Screen"**
+3. Under **Build and deployment**, set Source to **Deploy from a branch** → `main` → `/ (root)`
+4. Visit `https://<your-username>.github.io/kuberan-scanner/`
+5. On your phone:
+   - **Chrome Android:** Tap the **Install** banner or menu (⋮) → **Install app** / **Add to Home screen**
+   - **iPhone Safari:** Tap Share (square with arrow) → **Add to Home Screen**
 
 ### Option 2: Local Development
 
 ```bash
-# Any static file server will work
+# Serve with any static server
 npx serve .
 # or
 python -m http.server 8080
 ```
 
-> **Note:** Camera access requires HTTPS or `localhost`. GitHub Pages provides HTTPS automatically.
+> **Note:** Camera access in modern browsers requires **HTTPS** or `localhost`. GitHub Pages provides HTTPS automatically.
 
-## 📱 How to Use
+---
 
-1. **Open the app** on your phone
-2. **Allow camera access** when prompted
-3. **Point at a product barcode** and tap **"Scan & Capture"**
-4. The photo is captured and renamed with the barcode number
-5. Repeat for more products
-6. Tap **"Zip & Share"** to create a zip and share it
+## 📱 User Guide
 
-## 🔧 Browser Support
+1. **Open the app** on your mobile phone and allow camera permission.
+2. **Point camera at a barcode** and tap **Scan & Capture**:
+   - When detected, you'll hear a scanner beep and feel a vibration.
+   - The photo is saved and labeled with the barcode (e.g. `8901234567890.jpg`).
+3. **If no barcode is detected**, the manual entry dialog appears so you can type the product number.
+4. **Tap any thumbnail** in the gallery to view full-screen, rotate 90°, or retake.
+5. **Tap "Zip & Share"** to compress all photos into a ZIP archive and send it via WhatsApp, email, or save locally.
 
-| Feature | Chrome Android | Safari iOS | Chrome Desktop |
-|---------|---------------|------------|----------------|
-| Camera | ✅ | ✅ | ✅ |
-| Auto-scan barcode | ✅ | ❌ (manual entry) | ✅ |
-| Zip & Share | ✅ (native share) | ✅ (download) | ✅ (download) |
-| Install as app | ✅ | ✅ (Add to Home) | ✅ |
-| Offline mode | ✅ | ✅ | ✅ |
-| Flash/torch | ✅ | ❌ | ❌ |
+---
 
-## 📁 Project Structure
+## 🔧 Browser Compatibility
+
+| Feature | Chrome Android | Safari iOS | Chrome Desktop | Edge Desktop |
+|---|:---:|:---:|:---:|:---:|
+| Camera Stream | ✅ | ✅ | ✅ | ✅ |
+| Auto Barcode Detection | ✅ (Native) | ❌ (Manual entry) | ✅ | ✅ |
+| Audio Beep & Shutter Sound | ✅ | ✅ | ✅ | ✅ |
+| Haptic Vibration | ✅ | ❌ (iOS Web limitation) | ❌ | ❌ |
+| Zoom (1x / 2x) | ✅ | ✅ (Crop zoom) | ✅ | ✅ |
+| Camera Switching | ✅ | ✅ | ✅ | ✅ |
+| Photo Lightbox & Rotate | ✅ | ✅ | ✅ | ✅ |
+| Web Share (ZIP) | ✅ (Native Share) | ✅ (Download) | ✅ (Download) | ✅ (Download) |
+| Offline PWA Support | ✅ | ✅ | ✅ | ✅ |
+
+---
+
+## 📁 File Structure
 
 ```
 kuberan-scanner/
-├── index.html      # Main app page
-├── style.css       # Mobile-first dark theme
-├── app.js          # Application logic (gallery, zip, share, IndexedDB)
-├── scanner.js      # Camera & barcode detection module
-├── manifest.json   # PWA manifest (installability)
-├── sw.js           # Service worker (offline caching)
-├── README.md       # This file
+├── index.html        # Main app UI (viewfinder, gallery, modals, lightbox, settings)
+├── style.css         # Dark theme mobile-first styles and animations
+├── app.js            # Core application logic (capture, gallery, audio, settings, zip)
+├── scanner.js        # Camera stream, barcode detection, hardware/software zoom
+├── manifest.json     # PWA manifest for home-screen installation
+├── sw.js             # Service worker (offline caching & background sync)
+├── README.md         # Documentation & user guide
 └── icons/
-    ├── icon.svg    # Vector app icon
-    ├── icon-192.png # App icon 192×192
-    └── icon-512.png # App icon 512×512
+    ├── icon.svg      # Scalable vector app icon
+    ├── icon-192.png  # 192x192 PNG app icon
+    └── icon-512.png  # 512x512 PNG app icon
 ```
+
+---
 
 ## 🔑 Supported Barcode Formats
 
-EAN-13, EAN-8, UPC-A, UPC-E, Code 128, Code 39, QR Code, Codabar, ITF
+- **Retail:** EAN-13, EAN-8, UPC-A, UPC-E
+- **Industrial / Logistics:** Code 128, Code 39, Codabar, ITF
+- **2D Codes:** QR Code
 
-## 📝 Customization
-
-### Change App Name
-Edit `manifest.json` and update the `<title>` in `index.html`.
-
-### Change Theme Colors
-Edit the CSS custom properties at the top of `style.css`:
-```css
-:root {
-  --primary: #6366F1;    /* Main accent color */
-  --bg: #0F172A;          /* Background color */
-  --surface: #1E293B;     /* Card/panel color */
-}
-```
-
-### Change JPEG Quality
-Edit `CONFIG.JPEG_QUALITY` in `app.js` (0.0 – 1.0, default: 0.92).
-
-## 🏗️ Generating PNG Icons
-
-The app includes an SVG icon. For maximum compatibility, also create PNG versions:
-
-1. Open `icons/icon.svg` in a browser
-2. Take a screenshot and crop to square
-3. Resize to 192×192 and 512×512
-4. Save as `icons/icon-192.png` and `icons/icon-512.png`
-
-Or use an online tool like [RealFaviconGenerator](https://realfavicongenerator.net/).
+---
 
 ## 📄 License
 
-MIT License — free to use, modify, and distribute.
+MIT License — free for commercial and personal use.
