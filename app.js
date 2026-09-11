@@ -209,6 +209,26 @@ function playBarcodeBeep() {
   } catch (e) { /* ignore */ }
 }
 
+function playErrorTone() {
+  if (!settings.sound) return;
+  try {
+    const ctx = getAudioCtx();
+    if (!ctx) return;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sawtooth';
+    const now = ctx.currentTime;
+    osc.frequency.setValueAtTime(220, now);
+    osc.frequency.setValueAtTime(160, now + 0.1);
+    gain.gain.setValueAtTime(0.28, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.25);
+  } catch (e) { /* ignore */ }
+}
+
 function playShutterSound() {
   if (!settings.shutterSound) return;
   try {
@@ -598,12 +618,7 @@ async function startBarcodeScanning() {
   dom.scanStatus.hidden = false;
 
   const barcode = await scanner.scanUntilFound(
-    (result) => {
-      dom.scanFrame.classList.remove('scanning');
-      dom.scanFrame.classList.add('success');
-      playBarcodeBeep();
-      triggerHaptic([60, 40, 60]);
-    },
+    null,
     CONFIG.SCAN_INTERVAL_MS,
     CONFIG.SCAN_TIMEOUT_MS
   );
@@ -612,16 +627,32 @@ async function startBarcodeScanning() {
   dom.scanStatus.hidden = true;
 
   if (barcode && pendingPhotoBlob) {
-    // Barcode found — save photo and move to next product
+    // Check for duplicate barcode — strictly block and alert
     const isDuplicate = photos.some(p => p.barcode === barcode.value);
+    if (isDuplicate) {
+      dom.scanFrame.classList.add('error');
+      playErrorTone();
+      triggerHaptic([120, 80, 120]);
+      showToast(`❌ Barcode ${barcode.value} already scanned! Each barcode must be unique.`, 'error');
+
+      // Keep photo intact, resume scanning for correct barcode after a moment
+      setTimeout(() => {
+        dom.scanFrame.classList.remove('error');
+        if (currentStep === STEP.BARCODE && pendingPhotoBlob) {
+          startBarcodeScanning();
+        }
+      }, 1600);
+      return;
+    }
+
+    // Success: unique barcode detected!
+    dom.scanFrame.classList.add('success');
+    playBarcodeBeep();
+    triggerHaptic([60, 40, 60]);
+
     await savePhoto(barcode.value, pendingPhotoBlob);
     pendingPhotoBlob = null;
-
-    if (isDuplicate) {
-      showToast(`⚠️ Duplicate! Saved as additional photo`, 'warning');
-    } else {
-      showToast(`✓ Saved: ${barcode.value} (${formatSize(photos[photos.length - 1].size)})`, 'success');
-    }
+    showToast(`✓ Saved: ${barcode.value} (${formatSize(photos[photos.length - 1].size)})`, 'success');
 
     // Return to Step 1 for next product
     setStep(STEP.PHOTO);
@@ -661,18 +692,24 @@ async function handleModalSave() {
     return;
   }
 
+  // Check for duplicate barcode — strictly block and alert
   const isDuplicate = photos.some(p => p.barcode === barcode);
+  if (isDuplicate) {
+    playErrorTone();
+    triggerHaptic([120, 80, 120]);
+    dom.manualBarcode.style.borderColor = 'var(--danger)';
+    showToast(`❌ Barcode ${barcode} already exists! Each barcode must be unique.`, 'error');
+    dom.manualBarcode.select();
+    dom.manualBarcode.focus();
+    return; // Do not close modal, do not save!
+  }
+
   const blob = pendingPhotoBlob;
   pendingPhotoBlob = null;
   closeModal();
 
   await savePhoto(barcode, blob);
-
-  if (isDuplicate) {
-    showToast(`⚠️ Duplicate! Saved as additional photo (${formatSize(blob.size)})`, 'warning');
-  } else {
-    showToast(`✓ Saved: ${barcode} (${formatSize(blob.size)})`, 'success');
-  }
+  showToast(`✓ Saved: ${barcode} (${formatSize(blob.size)})`, 'success');
 
   // Return to Step 1 for next product
   setStep(STEP.PHOTO);
@@ -682,11 +719,7 @@ async function handleModalSave() {
    Photo Management
    ═══════════════════════════════════════════ */
 async function savePhoto(barcode, blob) {
-  const existing = photos.filter(p => p.barcode === barcode);
-  const seq = existing.length + 1;
-  const fileName = seq > 1
-    ? `${barcode}_${String(seq).padStart(3, '0')}.jpg`
-    : `${barcode}.jpg`;
+  const fileName = `${barcode}.jpg`;
 
   const photo = {
     id: generateId(),

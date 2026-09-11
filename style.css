@@ -193,6 +193,20 @@ body {
   box-shadow: 0 0 24px var(--success);
 }
 
+/* Scan error / duplicate flash */
+#scan-frame.error .corner {
+  border-color: var(--danger);
+  transition: border-color 0.15s;
+}
+
+#scan-frame.error #scan-line {
+  opacity: 1;
+  animation: none;
+  top: 50%;
+  background: var(--danger);
+  box-shadow: 0 0 24px var(--danger);
+}
+
 #scan-hint {
   margin-top: 12px;
   font-size: 0.8rem;
