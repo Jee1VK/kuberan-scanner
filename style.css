@@ -313,16 +313,32 @@ body {
 }
 
 .photo-label {
-  display: block;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
   padding: 6px 8px;
   font-size: 0.75rem;
   font-weight: 600;
   color: var(--text);
+  font-family: 'SF Mono', 'Cascadia Code', 'Roboto Mono', monospace;
+  background: var(--surface-raised);
+}
+
+.photo-name {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  font-family: 'SF Mono', 'Cascadia Code', 'Roboto Mono', monospace;
-  background: var(--surface-raised);
+}
+
+.photo-size {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  font-weight: 400;
+  flex-shrink: 0;
+  background: var(--bg);
+  padding: 1px 5px;
+  border-radius: 4px;
 }
 
 .btn-delete {

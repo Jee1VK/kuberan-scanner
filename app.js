@@ -16,7 +16,8 @@ const CONFIG = {
   DB_NAME: 'KuberanScannerDB',
   DB_VERSION: 1,
   STORE_NAME: 'photos',
-  JPEG_QUALITY: 0.92,
+  JPEG_QUALITY: 0.75,        // Optimized to compress photos to lightweight KB size
+  MAX_PHOTO_DIMENSION: 1200, // Downscale camera stream to keep each photo around 80-200 KB
   SCAN_TIMEOUT_MS: 5000,     // How long to scan before asking for manual entry
   SCAN_INTERVAL_MS: 150,     // Barcode scan frequency
   TOAST_DURATION_MS: 3000,
@@ -235,8 +236,8 @@ async function handleScanAndCapture() {
     );
   }
 
-  // Capture photo regardless of barcode result
-  const blob = await scanner.capturePhoto(CONFIG.JPEG_QUALITY);
+  // Capture photo regardless of barcode result (compressed to KB)
+  const blob = await scanner.capturePhoto(CONFIG.JPEG_QUALITY, CONFIG.MAX_PHOTO_DIMENSION);
 
   // Reset scan UI
   dom.scanFrame.classList.remove('scanning', 'success');
@@ -251,7 +252,7 @@ async function handleScanAndCapture() {
   if (barcode) {
     // Barcode found — save directly
     await savePhoto(barcode.value, blob);
-    showToast(`✓ Saved: ${barcode.value}`, 'success');
+    showToast(`✓ Saved: ${barcode.value} (${formatSize(blob.size)})`, 'success');
   } else {
     // No barcode found — prompt manual entry
     pendingPhotoBlob = blob;
@@ -266,7 +267,7 @@ async function captureAndPromptManual() {
     return;
   }
 
-  const blob = await scanner.capturePhoto(CONFIG.JPEG_QUALITY);
+  const blob = await scanner.capturePhoto(CONFIG.JPEG_QUALITY, CONFIG.MAX_PHOTO_DIMENSION);
   if (!blob) {
     showToast('Failed to capture photo', 'error');
     return;
@@ -306,10 +307,11 @@ async function handleModalSave() {
     return;
   }
 
+  const photoSize = pendingPhotoBlob.size;
   await savePhoto(barcode, pendingPhotoBlob);
   pendingPhotoBlob = null;
   closeModal();
-  showToast(`✓ Saved: ${barcode}`, 'success');
+  showToast(`✓ Saved: ${barcode} (${formatSize(photoSize)})`, 'success');
 }
 
 /* ═══════════════════════════════════════════
@@ -411,7 +413,10 @@ function renderGallery() {
     return `
       <div class="photo-item" data-id="${photo.id}">
         <img src="${photo._blobUrl}" alt="${photo.barcode}" loading="lazy">
-        <span class="photo-label" title="${photo.fileName}">${photo.fileName}</span>
+        <div class="photo-label" title="${photo.fileName}">
+          <span class="photo-name">${photo.fileName}</span>
+          <span class="photo-size">${formatSize(photo.size)}</span>
+        </div>
         <button class="btn-delete" data-id="${photo.id}" aria-label="Delete ${photo.fileName}">×</button>
       </div>
     `;
@@ -421,9 +426,10 @@ function renderGallery() {
 /** Update header stats */
 function updateStats() {
   const count = photos.length;
+  const totalBytes = photos.reduce((acc, p) => acc + (p.size || 0), 0);
   dom.photoStats.hidden = count === 0;
   dom.photoCount.textContent = count;
-  dom.galleryCount.textContent = count > 0 ? `(${count})` : '';
+  dom.galleryCount.textContent = count > 0 ? `(${count} • ${formatSize(totalBytes)})` : '';
 }
 
 /* ═══════════════════════════════════════════

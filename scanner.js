@@ -203,19 +203,34 @@ class BarcodeScanner {
     }
   }
 
-  /* ──────────── Photo Capture ──────────── */
-
   /**
-   * Capture the current video frame as a JPEG Blob.
-   * @param {number} quality — JPEG quality 0-1
+   * Capture the current video frame as an optimized JPEG Blob in KB size.
+   * @param {number} quality — JPEG quality 0-1 (e.g. 0.75)
+   * @param {number} maxDimension — Maximum width or height in px (e.g. 1200)
    * @returns {Promise<Blob|null>}
    */
-  capturePhoto(quality = 0.92) {
+  capturePhoto(quality = 0.75, maxDimension = 1200) {
     if (!this._ready || !this.video.videoWidth) return Promise.resolve(null);
 
-    this.canvas.width = this.video.videoWidth;
-    this.canvas.height = this.video.videoHeight;
-    this.ctx.drawImage(this.video, 0, 0);
+    const srcW = this.video.videoWidth;
+    const srcH = this.video.videoHeight;
+    let targetW = srcW;
+    let targetH = srcH;
+
+    // Scale down if image exceeds max dimension to keep file size in KB
+    if (maxDimension > 0 && (srcW > maxDimension || srcH > maxDimension)) {
+      if (srcW >= srcH) {
+        targetW = maxDimension;
+        targetH = Math.round((srcH * maxDimension) / srcW);
+      } else {
+        targetH = maxDimension;
+        targetW = Math.round((srcW * maxDimension) / srcH);
+      }
+    }
+
+    this.canvas.width = targetW;
+    this.canvas.height = targetH;
+    this.ctx.drawImage(this.video, 0, 0, targetW, targetH);
 
     return new Promise((resolve) => {
       this.canvas.toBlob(resolve, 'image/jpeg', quality);
