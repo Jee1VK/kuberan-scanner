@@ -1,6 +1,7 @@
 /**
  * BarcodeScanner — Camera access and barcode detection module
- * Uses native BarcodeDetector API (Chrome Android) with manual-entry fallback
+ * Uses native BarcodeDetector API (Chrome Android) with manual-entry fallback.
+ * Supports hardware/software zoom and camera switching.
  */
 class BarcodeScanner {
   /**
@@ -16,6 +17,14 @@ class BarcodeScanner {
     this._ready = false;
     this._scanInterval = null;
 
+    // Zoom & Camera states
+    this.zoomLevel = 1.0;
+    this.hasHardwareZoom = false;
+    this.zoomMin = 1.0;
+    this.zoomMax = 3.0;
+    this.availableCameras = [];
+    this.currentCameraIndex = 0;
+
     /** Supported barcode formats */
     this.formats = [
       'ean_13', 'ean_8',
@@ -28,12 +37,10 @@ class BarcodeScanner {
 
   /* ──────────── Static helpers ──────────── */
 
-  /** Check if the native BarcodeDetector API is available */
   static isNativeSupported() {
     return 'BarcodeDetector' in window;
   }
 
-  /** Check if camera access is possible */
   static async isCameraAvailable() {
     try {
       const devices = await navigator.mediaDevices.enumerateDevices();
@@ -46,38 +53,74 @@ class BarcodeScanner {
   /* ──────────── Lifecycle ──────────── */
 
   /**
-   * Initialize the camera and barcode detector.
-   * @returns {Promise<boolean>} true if camera started successfully
+   * Initialize camera stream and barcode detector.
+   * @param {string|null} preferredDeviceId
+   * @returns {Promise<boolean>}
    */
-  async init() {
-    // Request camera
+  async init(preferredDeviceId = null) {
     try {
+      // Discover available cameras
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        this.availableCameras = devices.filter(d => d.kind === 'videoinput');
+      } catch (err) {
+        console.warn('[Scanner] Failed to enumerate devices:', err);
+      }
+
+      // Build video constraints
+      const videoConstraints = {
+        width: { ideal: 1920 },
+        height: { ideal: 1080 },
+        frameRate: { ideal: 30 }
+      };
+
+      if (preferredDeviceId) {
+        videoConstraints.deviceId = { exact: preferredDeviceId };
+      } else {
+        videoConstraints.facingMode = { ideal: 'environment' };
+      }
+
       this.stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: { ideal: 'environment' },
-          width: { ideal: 1920 },
-          height: { ideal: 1080 },
-          // Prefer higher frame rate for smooth preview
-          frameRate: { ideal: 30 }
-        },
+        video: videoConstraints,
         audio: false
       });
 
       this.video.srcObject = this.stream;
 
-      // Wait for video to be ready
+      // Update current camera index
+      const activeTrack = this.stream.getVideoTracks()[0];
+      if (activeTrack && this.availableCameras.length > 0) {
+        const settings = activeTrack.getSettings();
+        const foundIdx = this.availableCameras.findIndex(d => d.deviceId === settings.deviceId);
+        if (foundIdx !== -1) this.currentCameraIndex = foundIdx;
+      }
+
+      // Check zoom capabilities
+      if (activeTrack && typeof activeTrack.getCapabilities === 'function') {
+        const caps = activeTrack.getCapabilities();
+        if (caps.zoom) {
+          this.hasHardwareZoom = true;
+          this.zoomMin = caps.zoom.min || 1.0;
+          this.zoomMax = Math.min(caps.zoom.max || 3.0, 5.0);
+        }
+      }
+
+      // Wait for video to play
       await new Promise((resolve, reject) => {
         this.video.onloadedmetadata = () => {
           this.video.play().then(resolve).catch(reject);
         };
-        // Timeout after 10 seconds
         setTimeout(() => reject(new Error('Camera timed out')), 10000);
       });
+
+      // Apply initial zoom
+      await this.setZoom(this.zoomLevel);
+
     } catch (err) {
       console.error('[Scanner] Camera access failed:', err);
       throw new Error(
         err.name === 'NotAllowedError'
-          ? 'Camera permission denied. Please allow camera access in your browser settings.'
+          ? 'Camera permission denied. Please allow camera access in browser settings.'
           : err.name === 'NotFoundError'
           ? 'No camera found on this device.'
           : `Camera error: ${err.message}`
@@ -85,7 +128,7 @@ class BarcodeScanner {
     }
 
     // Initialize native barcode detector if available
-    if (BarcodeScanner.isNativeSupported()) {
+    if (BarcodeScanner.isNativeSupported() && !this.detector) {
       try {
         const supported = await BarcodeDetector.getSupportedFormats();
         const usableFormats = this.formats.filter(f => supported.includes(f));
@@ -96,10 +139,6 @@ class BarcodeScanner {
       } catch (err) {
         console.warn('[Scanner] BarcodeDetector init failed:', err);
       }
-    }
-
-    if (!this.detector) {
-      console.log('[Scanner] Native scanning unavailable — manual entry will be used');
     }
 
     this._ready = true;
@@ -119,6 +158,56 @@ class BarcodeScanner {
     this._ready = false;
   }
 
+  /**
+   * Switch to next available camera (e.g. ultra-wide or back/front).
+   * @returns {Promise<boolean>}
+   */
+  async switchCamera() {
+    if (this.availableCameras.length <= 1) return false;
+    this.currentCameraIndex = (this.currentCameraIndex + 1) % this.availableCameras.length;
+    const nextDevice = this.availableCameras[this.currentCameraIndex];
+    this.stop();
+    await this.init(nextDevice.deviceId);
+    return true;
+  }
+
+  /* ──────────── Zoom Control ──────────── */
+
+  /**
+   * Set digital or hardware zoom factor (e.g. 1.0, 2.0).
+   * @param {number} level
+   * @returns {Promise<number>} applied zoom level
+   */
+  async setZoom(level) {
+    this.zoomLevel = Math.max(1.0, Math.min(level, this.zoomMax));
+
+    if (this.stream) {
+      const track = this.stream.getVideoTracks()[0];
+      if (this.hasHardwareZoom && track) {
+        try {
+          await track.applyConstraints({
+            advanced: [{ zoom: this.zoomLevel }]
+          });
+          // Reset any CSS scale if hardware zoom succeeded
+          this.video.style.transform = '';
+          return this.zoomLevel;
+        } catch (e) {
+          console.debug('[Scanner] Hardware zoom constraint failed, falling back to CSS zoom', e);
+        }
+      }
+    }
+
+    // Fallback: Software/CSS zoom on video element
+    if (this.zoomLevel > 1.0) {
+      this.video.style.transform = `scale(${this.zoomLevel})`;
+      this.video.style.transformOrigin = 'center center';
+    } else {
+      this.video.style.transform = '';
+    }
+
+    return this.zoomLevel;
+  }
+
   /* ──────────── Scanning ──────────── */
 
   /**
@@ -129,7 +218,6 @@ class BarcodeScanner {
     if (!this._ready || !this.video.videoWidth) return null;
     if (!this.detector) return null;
 
-    // Draw current frame to canvas
     this.canvas.width = this.video.videoWidth;
     this.canvas.height = this.video.videoHeight;
     this.ctx.drawImage(this.video, 0, 0);
@@ -143,7 +231,6 @@ class BarcodeScanner {
         };
       }
     } catch (err) {
-      // Detection errors are expected for unclear frames
       console.debug('[Scanner] Frame scan error:', err.message);
     }
 
@@ -152,9 +239,9 @@ class BarcodeScanner {
 
   /**
    * Start scanning continuously until a barcode is found.
-   * @param {function} onDetected — called with {value, format} when barcode found
-   * @param {number} intervalMs — scan interval in milliseconds
-   * @param {number} timeoutMs — give up after this many ms (0 = no timeout)
+   * @param {function} onDetected
+   * @param {number} intervalMs
+   * @param {number} timeoutMs
    * @returns {Promise<{value: string, format: string}|null>}
    */
   scanUntilFound(onDetected, intervalMs = 150, timeoutMs = 5000) {
@@ -171,7 +258,7 @@ class BarcodeScanner {
           elapsed += intervalMs;
           if (timeoutMs > 0 && elapsed >= timeoutMs) {
             clearInterval(interval);
-            resolve(null); // Timed out — no barcode found
+            resolve(null);
           }
         }
       }, intervalMs);
@@ -180,22 +267,6 @@ class BarcodeScanner {
     });
   }
 
-  /**
-   * Start continuous background scanning (for live preview feedback).
-   * @param {function} onDetected — called each time a barcode is detected
-   * @param {number} intervalMs
-   */
-  startContinuousScan(onDetected, intervalMs = 250) {
-    this.stopContinuousScan();
-    this._scanInterval = setInterval(async () => {
-      const result = await this.scanFrame();
-      if (result && onDetected) {
-        onDetected(result);
-      }
-    }, intervalMs);
-  }
-
-  /** Stop continuous scanning */
   stopContinuousScan() {
     if (this._scanInterval) {
       clearInterval(this._scanInterval);
@@ -203,34 +274,50 @@ class BarcodeScanner {
     }
   }
 
+  /* ──────────── Photo Capture ──────────── */
+
   /**
-   * Capture the current video frame as an optimized JPEG Blob in KB size.
-   * @param {number} quality — JPEG quality 0-1 (e.g. 0.75)
-   * @param {number} maxDimension — Maximum width or height in px (e.g. 1200)
+   * Capture current video frame with downscaling & software zoom crop support.
+   * @param {number} quality — JPEG quality (0.0 to 1.0)
+   * @param {number} maxDimension — Maximum width or height in px
    * @returns {Promise<Blob|null>}
    */
   capturePhoto(quality = 0.75, maxDimension = 1200) {
     if (!this._ready || !this.video.videoWidth) return Promise.resolve(null);
 
-    const srcW = this.video.videoWidth;
-    const srcH = this.video.videoHeight;
-    let targetW = srcW;
-    let targetH = srcH;
+    const fullW = this.video.videoWidth;
+    const fullH = this.video.videoHeight;
 
-    // Scale down if image exceeds max dimension to keep file size in KB
-    if (maxDimension > 0 && (srcW > maxDimension || srcH > maxDimension)) {
-      if (srcW >= srcH) {
+    let sx = 0;
+    let sy = 0;
+    let sWidth = fullW;
+    let sHeight = fullH;
+
+    // If software zoom was used (hardware zoom not applied directly to stream sensor)
+    if (!this.hasHardwareZoom && this.zoomLevel > 1.0) {
+      sWidth = fullW / this.zoomLevel;
+      sHeight = fullH / this.zoomLevel;
+      sx = (fullW - sWidth) / 2;
+      sy = (fullH - sHeight) / 2;
+    }
+
+    let targetW = sWidth;
+    let targetH = sHeight;
+
+    // Scale down if image exceeds max dimension to keep size in KB
+    if (maxDimension > 0 && (sWidth > maxDimension || sHeight > maxDimension)) {
+      if (sWidth >= sHeight) {
         targetW = maxDimension;
-        targetH = Math.round((srcH * maxDimension) / srcW);
+        targetH = Math.round((sHeight * maxDimension) / sWidth);
       } else {
         targetH = maxDimension;
-        targetW = Math.round((srcW * maxDimension) / srcH);
+        targetW = Math.round((sWidth * maxDimension) / sHeight);
       }
     }
 
     this.canvas.width = targetW;
     this.canvas.height = targetH;
-    this.ctx.drawImage(this.video, 0, 0, targetW, targetH);
+    this.ctx.drawImage(this.video, sx, sy, sWidth, sHeight, 0, 0, targetW, targetH);
 
     return new Promise((resolve) => {
       this.canvas.toBlob(resolve, 'image/jpeg', quality);
@@ -239,10 +326,6 @@ class BarcodeScanner {
 
   /* ──────────── Torch / Flash ──────────── */
 
-  /**
-   * Toggle the device torch (flashlight).
-   * @returns {Promise<boolean>} new torch state, or false if unsupported
-   */
   async toggleTorch() {
     if (!this.stream) return false;
 
@@ -268,17 +351,14 @@ class BarcodeScanner {
 
   /* ──────────── State queries ──────────── */
 
-  /** @returns {boolean} true if camera is active and video is playing */
   isReady() {
     return this._ready && this.video.readyState >= 2;
   }
 
-  /** @returns {boolean} true if native barcode detection is available */
   hasNativeScanning() {
     return this.detector !== null;
   }
 
-  /** @returns {{width: number, height: number}} current video dimensions */
   getVideoDimensions() {
     return {
       width: this.video.videoWidth || 0,
