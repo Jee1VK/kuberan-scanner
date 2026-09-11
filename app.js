@@ -155,6 +155,8 @@ const dom = {
   chkSound:         $('#setting-sound'),
   chkShutterSound:  $('#setting-shutter-sound'),
   chkVibration:     $('#setting-vibration'),
+  appVersionDisplay:$('#app-version-display'),
+  btnForceUpdate:   $('#btn-force-update'),
 
   // Manual Entry Modal
   modalOverlay:     $('#modal-overlay'),
@@ -509,6 +511,9 @@ function bindEvents() {
   dom.btnOpenSettings.addEventListener('click', openSettingsModal);
   dom.btnSettingsClose.addEventListener('click', closeSettingsModal);
   dom.btnSaveSettings.addEventListener('click', handleSaveSettings);
+  if (dom.btnForceUpdate) {
+    dom.btnForceUpdate.addEventListener('click', handleForceUpdate);
+  }
   dom.settingsOverlay.addEventListener('click', (e) => {
     if (e.target === dom.settingsOverlay) closeSettingsModal();
   });
@@ -910,6 +915,9 @@ function applySettingsToUI() {
   dom.chkSound.checked = !!settings.sound;
   dom.chkShutterSound.checked = !!settings.shutterSound;
   dom.chkVibration.checked = !!settings.vibration;
+  if (dom.appVersionDisplay) {
+    dom.appVersionDisplay.innerHTML = `Kuberan Scanner <strong>v${CONFIG.VERSION}</strong>`;
+  }
 }
 
 function handleSaveSettings() {
@@ -921,6 +929,31 @@ function handleSaveSettings() {
   saveSettings();
   closeSettingsModal();
   showToast('Settings saved!', 'success');
+}
+
+async function handleForceUpdate() {
+  if (dom.btnForceUpdate) dom.btnForceUpdate.disabled = true;
+  showToast('Checking for updates…');
+
+  try {
+    if ('serviceWorker' in navigator) {
+      const registrations = await navigator.serviceWorker.getRegistrations();
+      for (const reg of registrations) {
+        await reg.update();
+      }
+    }
+    if ('caches' in window) {
+      const keys = await caches.keys();
+      await Promise.all(keys.map(k => caches.delete(k)));
+    }
+    showToast('Updated to latest! Reloading…', 'success');
+    setTimeout(() => {
+      window.location.reload(true);
+    }, 500);
+  } catch (err) {
+    console.warn('[App] Manual update failed:', err);
+    window.location.reload(true);
+  }
 }
 
 /* ═══════════════════════════════════════════

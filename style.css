@@ -1000,7 +1000,9 @@ body {
 }
 
 .settings-version-row {
-  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   margin-top: 16px;
   padding-top: 12px;
   border-top: 1px solid var(--border);
@@ -1011,6 +1013,32 @@ body {
 .settings-version-row strong {
   color: var(--primary-light);
   font-weight: 600;
+}
+
+.btn-version-update {
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.btn-version-update:hover {
+  color: var(--text);
+  border-color: var(--primary);
+  background: var(--primary-bg);
+}
+
+.btn-version-update:disabled {
+  opacity: 0.5;
+  cursor: wait;
 }
 
 /* ══════════ NAME PROMPT MODAL ══════════ */

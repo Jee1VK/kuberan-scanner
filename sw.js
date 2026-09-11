@@ -3,7 +3,7 @@
  * Cache-first strategy for app shell, network-first for external resources
  */
 
-const CACHE_NAME = 'kuberan-scanner-v11';
+const CACHE_NAME = 'kuberan-scanner-v12';
 
 /** App shell files to pre-cache */
 const APP_SHELL = [
@@ -25,7 +25,7 @@ const EXTERNAL_RESOURCES = [
 
 /* ── Install: Pre-cache app shell and dependencies ── */
 self.addEventListener('install', (event) => {
-  console.log('[SW] Installing…');
+  console.log('[SW] Installing v12…');
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then(async (cache) => {
@@ -40,9 +40,9 @@ self.addEventListener('install', (event) => {
   );
 });
 
-/* ── Activate: Clean up old caches ── */
+/* ── Activate: Clean up old caches immediately ── */
 self.addEventListener('activate', (event) => {
-  console.log('[SW] Activating…');
+  console.log('[SW] Activating v12…');
   event.waitUntil(
     caches.keys()
       .then((keys) => {
@@ -59,7 +59,7 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-/* ── Fetch: Cache-first for app shell, stale-while-revalidate for external ── */
+/* ── Fetch: Network-first for HTML, stale-while-revalidate for other assets ── */
 self.addEventListener('fetch', (event) => {
   const { request } = event;
 
@@ -69,36 +69,48 @@ self.addEventListener('fetch', (event) => {
   // Skip chrome-extension and other non-http requests
   if (!request.url.startsWith('http')) return;
 
-  // Determine strategy based on request origin
-  const isExternal = !request.url.startsWith(self.location.origin);
+  // 1. Navigation / HTML requests: Network-First (so updates are visible immediately when online)
+  const isHtml = request.mode === 'navigate' ||
+                 request.destination === 'document' ||
+                 (request.headers.get('accept') && request.headers.get('accept').includes('text/html'));
 
-  if (isExternal) {
-    // Stale-while-revalidate for external (CDN) resources
-    event.respondWith(staleWhileRevalidate(request));
-  } else {
-    // Cache-first for app shell
-    event.respondWith(cacheFirst(request));
+  if (isHtml) {
+    event.respondWith(networkFirst(request));
+    return;
   }
+
+  // 2. All other assets: Stale-While-Revalidate (instant load from cache + background refresh)
+  event.respondWith(staleWhileRevalidate(request));
 });
 
 /**
- * Cache-first strategy: serve from cache, fallback to network.
- * If network succeeds, update the cache.
+ * Network-first strategy for HTML pages:
+ * Tries network first (with 2.5s timeout) so users see updates immediately.
+ * Falls back to cache if offline.
  */
-async function cacheFirst(request) {
-  const cached = await caches.match(request);
-  if (cached) return cached;
-
+async function networkFirst(request) {
   try {
-    const response = await fetch(request);
-    if (response.ok) {
-      const cache = await caches.open(CACHE_NAME);
-      cache.put(request, response.clone());
-    }
-    return response;
+    const networkPromise = fetch(request).then(async (response) => {
+      if (response && response.ok) {
+        const cache = await caches.open(CACHE_NAME);
+        cache.put(request, response.clone());
+      }
+      return response;
+    });
+
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('Network timeout')), 2500)
+    );
+
+    return await Promise.race([networkPromise, timeoutPromise]);
   } catch (err) {
-    // If both cache and network fail, return offline page
-    console.error('[SW] Fetch failed:', request.url, err);
+    // Network failed or timed out — fall back to cache
+    const cached = await caches.match(request);
+    if (cached) return cached;
+
+    const fallback = (await caches.match('./index.html')) || (await caches.match('./'));
+    if (fallback) return fallback;
+
     return new Response('Offline — please check your connection', {
       status: 503,
       headers: { 'Content-Type': 'text/plain' }
@@ -107,8 +119,8 @@ async function cacheFirst(request) {
 }
 
 /**
- * Stale-while-revalidate: serve from cache immediately,
- * then update cache in background from network.
+ * Stale-while-revalidate: serve from cache immediately for speed,
+ * then update cache in background from network for next time.
  */
 async function staleWhileRevalidate(request) {
   const cache = await caches.open(CACHE_NAME);
@@ -117,7 +129,7 @@ async function staleWhileRevalidate(request) {
   // Fetch from network in the background
   const fetchPromise = fetch(request)
     .then((response) => {
-      if (response.ok) {
+      if (response && response.ok) {
         cache.put(request, response.clone());
       }
       return response;

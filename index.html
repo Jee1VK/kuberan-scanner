@@ -314,7 +314,14 @@
           <button type="button" id="btn-save-settings" class="btn btn-primary">Done</button>
         </div>
         <div class="settings-version-row">
-          <span>Kuberan Scanner <strong>v1.1.0</strong></span>
+          <span id="app-version-display">Kuberan Scanner <strong>v1.1.0</strong></span>
+          <button type="button" id="btn-force-update" class="btn-version-update" title="Check for latest version">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="23 4 23 10 17 10"/>
+              <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+            </svg>
+            <span>Update App</span>
+          </button>
         </div>
       </div>
     </div>
@@ -393,13 +400,25 @@
   <script src="scanner.js"></script>
   <script src="app.js"></script>
 
-  <!-- Service Worker Registration -->
+  <!-- Service Worker Registration with Auto-Update -->
   <script>
     if ('serviceWorker' in navigator) {
+      let refreshing = false;
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (!refreshing) {
+          refreshing = true;
+          window.location.reload();
+        }
+      });
+
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./sw.js')
-          .then(reg => console.log('[SW] Registered:', reg.scope))
-          .catch(err => console.warn('[SW] Registration failed:', err));
+        navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' })
+          .then((reg) => {
+            console.log('[SW] Registered:', reg.scope);
+            reg.update();
+            setInterval(() => reg.update(), 15 * 60 * 1000);
+          })
+          .catch((err) => console.warn('[SW] Registration failed:', err));
       });
     }
   </script>
