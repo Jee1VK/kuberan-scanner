@@ -352,10 +352,10 @@ function setStep(step) {
 
   if (step === STEP.PHOTO) {
     // Step 1: Take Product Photo
-    dom.stepBadge.className = 'step-badge step-photo';
-    dom.stepBadge.querySelector('.step-number').textContent = '1';
+    dom.stepBadge.className = 'step-badge step-photo' + (retakeTargetBarcode ? ' retake-mode' : '');
+    dom.stepBadge.querySelector('.step-number').textContent = retakeTargetBarcode ? '↺' : '1';
     dom.stepBadge.querySelector('.step-text').textContent = retakeTargetBarcode 
-      ? `Retaking for ${retakeTargetBarcode}`
+      ? `Retaking for ${retakeTargetBarcode} (tap to cancel)`
       : 'Take Product Photo';
     dom.btnActionText.textContent = 'Snap Photo';
     if (dom.btnActionIconCamera) dom.btnActionIconCamera.hidden = false;
@@ -424,12 +424,22 @@ function bindEvents() {
   // Retry camera
   dom.btnRetryCamera.addEventListener('click', initCamera);
 
+  // Step badge click (cancel retake mode if active)
+  dom.stepBadge.addEventListener('click', () => {
+    if (retakeTargetBarcode) {
+      retakeTargetBarcode = null;
+      setStep(STEP.PHOTO);
+      showToast('Retake cancelled. Back to new product photo.');
+    }
+  });
+
   // Camera switch
   dom.btnSwitchCamera.addEventListener('click', async () => {
     if (!scanner) return;
     dom.btnSwitchCamera.disabled = true;
     try {
       await scanner.switchCamera();
+      dom.btnFlash.classList.remove('active');
       showToast('Camera switched');
     } catch (e) {
       showToast('Failed to switch camera', 'error');
@@ -791,7 +801,7 @@ function renderGallery() {
           <span class="photo-name">${escapeHtml(photo.fileName)}</span>
           <span class="photo-size">${formatSize(photo.size)}</span>
         </div>
-        <button class="btn-delete" data-id="${photo.id}" aria-label="Delete ${escapeHtml(photo.fileName)}">×</button>
+        <button type="button" class="btn-delete" data-id="${photo.id}" aria-label="Delete ${escapeHtml(photo.fileName)}">×</button>
       </div>
     `;
   }).join('');
@@ -812,6 +822,7 @@ function openLightbox(photo) {
   activeLightboxPhoto = photo;
   dom.lightboxTitle.textContent = photo.fileName;
   dom.lightboxSize.textContent = `${formatSize(photo.size)} • ${new Date(photo.timestamp).toLocaleTimeString()}`;
+  if (!photo._blobUrl) photo._blobUrl = URL.createObjectURL(photo.blob);
   dom.lightboxImg.src = photo._blobUrl;
   dom.lightbox.hidden = false;
 }
@@ -1016,9 +1027,11 @@ async function handleZipAndShare() {
         showToast(`✓ Shared: ${zipFileName}`, 'success');
         return;
       } catch (err) {
-        if (err.name !== 'AbortError') {
-          console.warn('[App] Share failed, falling back to download:', err);
+        if (err.name === 'AbortError') {
+          // User intentionally closed/dismissed the share sheet
+          return;
         }
+        console.warn('[App] Share failed, falling back to download:', err);
       }
     }
 
