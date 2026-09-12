@@ -222,14 +222,20 @@ body {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 12px;
+  gap: 14px;
   background: var(--surface);
   color: var(--text-muted);
+  padding: 24px 16px;
+  z-index: 20;
 }
 
 #camera-error p {
   text-align: center;
-  max-width: 280px;
+  max-width: 340px;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  color: var(--text);
+  margin: 0;
 }
 
 /* ── Camera Controls ── */

@@ -380,6 +380,14 @@ function handleNameSubmit() {
 /* ── Camera initialization ── */
 async function initCamera() {
   try {
+    if (scanner) {
+      try {
+        scanner.stop();
+      } catch (e) {
+        console.warn('[App] Failed to stop previous scanner instance:', e);
+      }
+    }
+
     scanner = new BarcodeScanner(dom.cameraFeed, dom.scanCanvas);
     await scanner.init();
 
@@ -389,6 +397,8 @@ async function initCamera() {
 
     if (scanner.availableCameras && scanner.availableCameras.length > 1) {
       dom.btnSwitchCamera.hidden = false;
+    } else {
+      dom.btnSwitchCamera.hidden = true;
     }
 
     dom.cameraError.hidden = true;
@@ -400,7 +410,7 @@ async function initCamera() {
     console.error('[App] Camera init failed:', err);
     dom.cameraError.hidden = false;
     dom.cameraFeed.hidden = true;
-    dom.cameraErrorMsg.textContent = err.message;
+    dom.cameraErrorMsg.textContent = err.message || 'Camera not available';
   }
 }
 
@@ -482,7 +492,10 @@ function bindEvents() {
   }
 
   // Retry camera
-  dom.btnRetryCamera.addEventListener('click', initCamera);
+  dom.btnRetryCamera?.addEventListener('click', () => {
+    dom.cameraErrorMsg.textContent = 'Reconnecting to camera…';
+    initCamera();
+  });
 
   // Step badge click (cancel retake mode if active)
   dom.stepBadge.addEventListener('click', () => {
@@ -1414,8 +1427,13 @@ function openBarcodeOnlyMode() {
 
   // Wire camera stream to barcode-only video feed
   if (scanner && scanner.stream) {
+    dom.boCameraFeed.muted = true;
+    dom.boCameraFeed.playsInline = true;
+    dom.boCameraFeed.setAttribute('playsinline', '');
+    dom.boCameraFeed.setAttribute('webkit-playsinline', '');
     dom.boCameraFeed.srcObject = scanner.stream;
     dom.boCameraFeed.play().catch(() => {});
+    scanner.setActiveVideo(dom.boCameraFeed);
   }
 
   // Multi-camera button visibility
@@ -1449,8 +1467,13 @@ function closeBarcodeOnlyMode() {
 
   // Re-wire camera stream to main video feed
   if (scanner && scanner.stream) {
+    dom.cameraFeed.muted = true;
+    dom.cameraFeed.playsInline = true;
+    dom.cameraFeed.setAttribute('playsinline', '');
+    dom.cameraFeed.setAttribute('webkit-playsinline', '');
     dom.cameraFeed.srcObject = scanner.stream;
     dom.cameraFeed.play().catch(() => {});
+    scanner.setActiveVideo(dom.cameraFeed);
   }
 
   setStep(STEP.PHOTO);

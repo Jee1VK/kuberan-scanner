@@ -11,7 +11,7 @@
   <link rel="manifest" href="manifest.json">
   <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
-  <link rel="stylesheet" href="style.css?v=1.2.0">
+  <link rel="stylesheet" href="style.css?v=1.2.1">
   <title>Kuberan Scanner</title>
 </head>
 <body>
@@ -592,8 +592,8 @@
           referrerpolicy="no-referrer"></script>
 
   <!-- App Scripts -->
-  <script src="scanner.js?v=1.2.0"></script>
-  <script src="app.js?v=1.2.0"></script>
+  <script src="scanner.js?v=1.2.1"></script>
+  <script src="app.js?v=1.2.1"></script>
 
   <!-- Service Worker Registration with Auto-Update -->
   <script>
@@ -607,7 +607,7 @@
       });
 
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./sw.js?v=1.2.0', { updateViaCache: 'none' })
+        navigator.serviceWorker.register('./sw.js?v=1.2.1', { updateViaCache: 'none' })
           .then((reg) => {
             console.log('[SW] Registered:', reg.scope);
             reg.update();
