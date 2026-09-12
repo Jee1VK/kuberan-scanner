@@ -79,6 +79,15 @@ let deferredInstallPrompt = null;
 let searchQuery = '';
 let audioCtx = null;
 
+// Barcode-Only Mode State
+let barcodeOnlyList = [];
+let isBarcodeOnlyActive = false;
+let isBoScanningPaused = false;
+let boScanInterval = null;
+let lastBoScanCode = null;
+let lastBoScanTime = 0;
+let boSearchQuery = '';
+
 /* ═══════════════════════════════════════════
    DOM References
    ═══════════════════════════════════════════ */
@@ -180,6 +189,52 @@ const dom = {
   loadingText:      $('#loading-text'),
   progressFill:     $('#progress-fill'),
   progressPercent:  $('#progress-percent'),
+
+  // Main Section Views (for Mode Switching)
+  appHeader:        $('#app-header'),
+  stepIndicator:    $('#step-indicator'),
+  cameraSection:    $('#camera-section'),
+  gallerySection:   $('#gallery-section'),
+
+  // Barcode-Only Segment
+  btnOpenBarcodeMode:   $('#btn-open-barcode-mode'),
+  barcodeOnlySegment:   $('#barcode-only-segment'),
+  boHeader:             $('#bo-header'),
+  btnBoBack:            $('#btn-bo-back'),
+  boStatsBadge:         $('#bo-stats-badge'),
+  boCount:              $('#bo-count'),
+  boCameraContainer:    $('#bo-camera-container'),
+  boCameraFeed:         $('#bo-camera-feed'),
+  boScanCanvas:         $('#bo-scan-canvas'),
+  boScanOverlay:        $('#bo-scan-overlay'),
+  boScanFrame:          $('#bo-scan-frame'),
+  boScanHint:           $('#bo-scan-hint'),
+  boZoomButtons:        $$('.bo-zoom-btn'),
+  btnBoSwitchCamera:    $('#btn-bo-switch-camera'),
+  btnBoFlash:           $('#btn-bo-flash'),
+  btnBoManual:          $('#btn-bo-manual'),
+  btnBoPause:           $('#btn-bo-pause'),
+  iconBoPause:          $('#icon-bo-pause'),
+  iconBoPlay:           $('#icon-bo-play'),
+  boListCount:          $('#bo-list-count'),
+  btnBoClearTop:        $('#btn-bo-clear-top'),
+  boSearchWrap:         $('#bo-search-wrap'),
+  boSearch:             $('#bo-search'),
+  boEmptyState:         $('#bo-empty-state'),
+  boItemsList:          $('#bo-items-list'),
+  boActionBar:          $('#bo-action-bar'),
+  btnBoExportTxt:       $('#btn-bo-export-txt'),
+  btnBoExportCsv:       $('#btn-bo-export-csv'),
+  btnBoExportXlsx:      $('#btn-bo-export-xlsx'),
+
+  // Barcode-Only Modals
+  modalBoManualOverlay: $('#modal-bo-manual-overlay'),
+  inputBoManual:        $('#input-bo-manual'),
+  btnBoManualSave:      $('#btn-bo-manual-save'),
+  btnBoManualCancel:    $('#btn-bo-manual-cancel'),
+  modalBoConfirmOverlay:$('#modal-bo-confirm-overlay'),
+  btnBoConfirmClear:    $('#btn-bo-confirm-clear'),
+  btnBoConfirmCancel:   $('#btn-bo-confirm-cancel'),
 };
 
 /* ═══════════════════════════════════════════
@@ -281,6 +336,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   photos = await loadPhotos();
   renderGallery();
   updateStats();
+
+  loadBarcodeOnlyList();
 
   // Show name prompt on EVERY app open
   showNamePrompt();
@@ -538,6 +595,108 @@ function bindEvents() {
   dom.btnInstall.addEventListener('click', handleInstall);
   dom.btnDismissInstall.addEventListener('click', () => { dom.installBanner.hidden = true; });
 
+  // Barcode-Only Mode open & back
+  if (dom.btnOpenBarcodeMode) {
+    dom.btnOpenBarcodeMode.addEventListener('click', openBarcodeOnlyMode);
+  }
+  if (dom.btnBoBack) {
+    dom.btnBoBack.addEventListener('click', closeBarcodeOnlyMode);
+  }
+
+  // Barcode-Only Manual Entry
+  if (dom.btnBoManual) {
+    dom.btnBoManual.addEventListener('click', openBoManualModal);
+  }
+  if (dom.btnBoManualSave) {
+    dom.btnBoManualSave.addEventListener('click', handleBoManualAdd);
+  }
+  if (dom.btnBoManualCancel) {
+    dom.btnBoManualCancel.addEventListener('click', closeBoManualModal);
+  }
+  if (dom.inputBoManual) {
+    dom.inputBoManual.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') handleBoManualAdd();
+    });
+  }
+  if (dom.modalBoManualOverlay) {
+    dom.modalBoManualOverlay.addEventListener('click', (e) => {
+      if (e.target === dom.modalBoManualOverlay) closeBoManualModal();
+    });
+  }
+
+  // Barcode-Only Controls (Pause, Flash, Switch, Zoom)
+  if (dom.btnBoPause) {
+    dom.btnBoPause.addEventListener('click', toggleBoScanningPause);
+  }
+  if (dom.btnBoFlash) {
+    dom.btnBoFlash.addEventListener('click', handleBoFlashToggle);
+  }
+  if (dom.btnBoSwitchCamera) {
+    dom.btnBoSwitchCamera.addEventListener('click', handleBoSwitchCamera);
+  }
+  dom.boZoomButtons.forEach((btn) => {
+    btn.addEventListener('click', async (e) => {
+      const zoomVal = parseFloat(e.target.dataset.zoom) || 1.0;
+      if (scanner) {
+        await scanner.setZoom(zoomVal);
+        dom.boZoomButtons.forEach(b => b.classList.remove('active'));
+        e.target.classList.add('active');
+      }
+    });
+  });
+
+  // Barcode-Only Search
+  if (dom.boSearch) {
+    dom.boSearch.addEventListener('input', (e) => {
+      boSearchQuery = e.target.value.trim().toLowerCase();
+      renderBarcodeOnlyList();
+    });
+  }
+
+  // Barcode-Only Clear All
+  if (dom.btnBoClearTop) {
+    dom.btnBoClearTop.addEventListener('click', () => {
+      dom.modalBoConfirmOverlay.hidden = false;
+    });
+  }
+  if (dom.btnBoConfirmClear) {
+    dom.btnBoConfirmClear.addEventListener('click', () => {
+      handleBoClearAll();
+      dom.modalBoConfirmOverlay.hidden = true;
+    });
+  }
+  if (dom.btnBoConfirmCancel) {
+    dom.btnBoConfirmCancel.addEventListener('click', () => {
+      dom.modalBoConfirmOverlay.hidden = true;
+    });
+  }
+  if (dom.modalBoConfirmOverlay) {
+    dom.modalBoConfirmOverlay.addEventListener('click', (e) => {
+      if (e.target === dom.modalBoConfirmOverlay) dom.modalBoConfirmOverlay.hidden = true;
+    });
+  }
+
+  // Barcode-Only Item Click (Delete)
+  if (dom.boItemsList) {
+    dom.boItemsList.addEventListener('click', (e) => {
+      const delBtn = e.target.closest('.bo-card-delete');
+      if (delBtn) {
+        handleBoDelete(delBtn.dataset.id);
+      }
+    });
+  }
+
+  // Barcode-Only Exports
+  if (dom.btnBoExportTxt) {
+    dom.btnBoExportTxt.addEventListener('click', exportBoTxt);
+  }
+  if (dom.btnBoExportCsv) {
+    dom.btnBoExportCsv.addEventListener('click', exportBoCsv);
+  }
+  if (dom.btnBoExportXlsx) {
+    dom.btnBoExportXlsx.addEventListener('click', exportBoXlsx);
+  }
+
   // Escape key
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
@@ -545,6 +704,10 @@ function bindEvents() {
       closeSettingsModal();
       closeModal();
       dom.confirmOverlay.hidden = true;
+      if (isBarcodeOnlyActive) {
+        closeBoManualModal();
+        dom.modalBoConfirmOverlay.hidden = true;
+      }
       if (currentStep === STEP.BARCODE && !pendingPhotoBlob) {
         setStep(STEP.PHOTO);
       }
@@ -918,6 +1081,13 @@ function applySettingsToUI() {
   if (dom.appVersionDisplay) {
     dom.appVersionDisplay.innerHTML = `Kuberan Scanner <strong>v${CONFIG.VERSION}</strong>`;
   }
+
+  // Hide in installed standalone app until user requests ("keep in website only")
+  const isInstalledApp = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+  const boModeGroup = dom.btnOpenBarcodeMode ? dom.btnOpenBarcodeMode.closest('.settings-group') : null;
+  if (boModeGroup) {
+    boModeGroup.hidden = isInstalledApp;
+  }
 }
 
 function handleSaveSettings() {
@@ -1211,4 +1381,399 @@ function formatSize(bytes) {
 
 function escapeHtml(str) {
   return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+/* ═══════════════════════════════════════════
+   Barcode-Only Rapid Scanner Segment
+   ═══════════════════════════════════════════ */
+
+function loadBarcodeOnlyList() {
+  try {
+    const saved = localStorage.getItem('kuberan_barcode_only_list');
+    if (saved) barcodeOnlyList = JSON.parse(saved);
+  } catch (e) {
+    barcodeOnlyList = [];
+  }
+}
+
+function saveBarcodeOnlyList() {
+  try {
+    localStorage.setItem('kuberan_barcode_only_list', JSON.stringify(barcodeOnlyList));
+  } catch (e) { /* ignore */ }
+}
+
+function openBarcodeOnlyMode() {
+  closeSettingsModal();
+  isBarcodeOnlyActive = true;
+  isBoScanningPaused = false;
+  lastBoScanCode = null;
+  lastBoScanTime = 0;
+
+  // Hide Main Photo App Elements
+  dom.appHeader.hidden = true;
+  dom.stepIndicator.hidden = true;
+  dom.cameraSection.hidden = true;
+  dom.gallerySection.hidden = true;
+  dom.actionBar.hidden = true;
+
+  // Show Barcode-Only Segment
+  dom.barcodeOnlySegment.hidden = false;
+
+  // Wire camera stream to barcode-only video feed
+  if (scanner && scanner.stream) {
+    dom.boCameraFeed.srcObject = scanner.stream;
+    dom.boCameraFeed.play().catch(() => {});
+  }
+
+  // Multi-camera button visibility
+  if (dom.btnBoSwitchCamera && scanner) {
+    dom.btnBoSwitchCamera.hidden = !(scanner.availableCameras && scanner.availableCameras.length > 1);
+  }
+
+  // Update controls and render list
+  updateBoPauseIcon();
+  renderBarcodeOnlyList();
+
+  // Start continuous scan loop
+  startBoScanningLoop();
+  window.scrollTo({ top: 0, behavior: 'instant' });
+  showToast('Barcode-Only Rapid Scanner ready');
+}
+
+function closeBarcodeOnlyMode() {
+  stopBoScanningLoop();
+  isBarcodeOnlyActive = false;
+
+  // Hide Barcode-Only Segment
+  dom.barcodeOnlySegment.hidden = true;
+
+  // Restore Main Photo App Elements
+  dom.appHeader.hidden = false;
+  dom.stepIndicator.hidden = false;
+  dom.cameraSection.hidden = false;
+  dom.gallerySection.hidden = false;
+  dom.actionBar.hidden = photos.length === 0;
+
+  // Re-wire camera stream to main video feed
+  if (scanner && scanner.stream) {
+    dom.cameraFeed.srcObject = scanner.stream;
+    dom.cameraFeed.play().catch(() => {});
+  }
+
+  setStep(STEP.PHOTO);
+}
+
+function startBoScanningLoop() {
+  stopBoScanningLoop();
+  boScanInterval = setInterval(async () => {
+    if (!isBarcodeOnlyActive || isBoScanningPaused) return;
+    if (!dom.modalBoManualOverlay.hidden || !dom.modalBoConfirmOverlay.hidden) return;
+    if (!scanner || !scanner.isReady()) return;
+
+    try {
+      const detected = await scanner.scanFrame();
+      if (detected && detected.value) {
+        handleBoBarcodeDetected(detected.value.trim());
+      }
+    } catch (e) {
+      /* ignore occasional frame decode errors */
+    }
+  }, 130);
+}
+
+function stopBoScanningLoop() {
+  if (boScanInterval) {
+    clearInterval(boScanInterval);
+    boScanInterval = null;
+  }
+}
+
+function handleBoBarcodeDetected(code) {
+  if (!code) return;
+
+  // Debounce consecutive scans of the exact same code
+  if (code === lastBoScanCode && (Date.now() - lastBoScanTime) < 1800) {
+    return;
+  }
+
+  lastBoScanCode = code;
+  lastBoScanTime = Date.now();
+
+  // Duplicate Check
+  const isDuplicate = barcodeOnlyList.some(item => item.barcode === code);
+
+  if (isDuplicate) {
+    // ❌ Duplicate Barcode: Warning Tone, Vibration, Red Flash, Warning Toast
+    playErrorTone();
+    triggerHaptic([120, 80, 120]);
+    dom.boScanFrame.classList.add('error');
+    setTimeout(() => dom.boScanFrame.classList.remove('error'), 1200);
+    showToast(`❌ Duplicate Barcode: ${code} already in list!`, 'error');
+    return;
+  }
+
+  // ✓ Unique Barcode: Success Tone, Vibration, Green Flash, Added to List
+  playBarcodeBeep();
+  triggerHaptic([60, 40, 60]);
+  dom.boScanFrame.classList.add('success');
+  setTimeout(() => dom.boScanFrame.classList.remove('success'), 600);
+
+  const item = {
+    id: generateId(),
+    barcode: code,
+    timestamp: Date.now()
+  };
+
+  barcodeOnlyList.unshift(item);
+  saveBarcodeOnlyList();
+  renderBarcodeOnlyList();
+  showToast(`✓ Scanned: ${code}`, 'success');
+}
+
+function renderBarcodeOnlyList() {
+  const total = barcodeOnlyList.length;
+  dom.boCount.textContent = total;
+  dom.boListCount.textContent = total > 0 ? `(${total})` : '';
+
+  const hasItems = total > 0;
+  dom.boEmptyState.hidden = hasItems;
+  dom.boSearchWrap.hidden = !hasItems;
+  dom.boActionBar.hidden = !hasItems;
+  dom.btnBoClearTop.disabled = !hasItems;
+  dom.btnBoExportTxt.disabled = !hasItems;
+  dom.btnBoExportCsv.disabled = !hasItems;
+  dom.btnBoExportXlsx.disabled = !hasItems;
+
+  if (!hasItems) {
+    dom.boItemsList.innerHTML = '';
+    return;
+  }
+
+  const displayed = boSearchQuery
+    ? barcodeOnlyList.filter(item => item.barcode.toLowerCase().includes(boSearchQuery))
+    : barcodeOnlyList;
+
+  if (displayed.length === 0) {
+    dom.boItemsList.innerHTML = `<div style="text-align: center; padding: 20px; color: var(--text-muted);">No barcodes matching "${escapeHtml(boSearchQuery)}"</div>`;
+    return;
+  }
+
+  dom.boItemsList.innerHTML = displayed.map((item) => {
+    const originalIndex = barcodeOnlyList.length - barcodeOnlyList.indexOf(item);
+    const d = new Date(item.timestamp);
+    const timeStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    return `
+      <div class="bo-card" data-id="${item.id}">
+        <div class="bo-card-left">
+          <span class="bo-card-index">${originalIndex}</span>
+          <div class="bo-card-info">
+            <span class="bo-card-code">${escapeHtml(item.barcode)}</span>
+            <span class="bo-card-time">${escapeHtml(timeStr)}</span>
+          </div>
+        </div>
+        <button type="button" class="bo-card-delete" data-id="${item.id}" title="Remove this barcode" aria-label="Delete ${escapeHtml(item.barcode)}">✕</button>
+      </div>
+    `;
+  }).join('');
+}
+
+function handleBoDelete(id) {
+  barcodeOnlyList = barcodeOnlyList.filter(item => item.id !== id);
+  saveBarcodeOnlyList();
+  renderBarcodeOnlyList();
+  showToast('Barcode removed');
+}
+
+function handleBoClearAll() {
+  barcodeOnlyList = [];
+  saveBarcodeOnlyList();
+  renderBarcodeOnlyList();
+  showToast('All scanned barcodes cleared');
+}
+
+function openBoManualModal() {
+  dom.inputBoManual.value = '';
+  dom.modalBoManualOverlay.hidden = false;
+  setTimeout(() => dom.inputBoManual.focus(), 120);
+}
+
+function closeBoManualModal() {
+  dom.modalBoManualOverlay.hidden = true;
+  dom.inputBoManual.value = '';
+}
+
+function handleBoManualAdd() {
+  const code = dom.inputBoManual.value.trim();
+  if (!code) {
+    dom.inputBoManual.style.borderColor = 'var(--danger)';
+    dom.inputBoManual.focus();
+    setTimeout(() => dom.inputBoManual.style.borderColor = '', 1000);
+    return;
+  }
+
+  const isDuplicate = barcodeOnlyList.some(item => item.barcode === code);
+  if (isDuplicate) {
+    playErrorTone();
+    triggerHaptic([120, 80, 120]);
+    dom.inputBoManual.style.borderColor = 'var(--danger)';
+    showToast(`❌ Duplicate Barcode: ${code} already in list!`, 'error');
+    dom.inputBoManual.select();
+    return;
+  }
+
+  playBarcodeBeep();
+  triggerHaptic([60, 40, 60]);
+
+  const item = {
+    id: generateId(),
+    barcode: code,
+    timestamp: Date.now()
+  };
+
+  barcodeOnlyList.unshift(item);
+  saveBarcodeOnlyList();
+  renderBarcodeOnlyList();
+  closeBoManualModal();
+  showToast(`✓ Added: ${code}`, 'success');
+}
+
+function toggleBoScanningPause() {
+  isBoScanningPaused = !isBoScanningPaused;
+  updateBoPauseIcon();
+  if (isBoScanningPaused) {
+    dom.boScanFrame.classList.remove('scanning');
+    showToast('Scanner paused');
+  } else {
+    dom.boScanFrame.classList.add('scanning');
+    showToast('Scanner resumed');
+  }
+}
+
+function updateBoPauseIcon() {
+  if (isBoScanningPaused) {
+    dom.iconBoPause.hidden = true;
+    dom.iconBoPlay.hidden = false;
+    dom.btnBoPause.classList.add('active');
+  } else {
+    dom.iconBoPause.hidden = false;
+    dom.iconBoPlay.hidden = true;
+    dom.btnBoPause.classList.remove('active');
+  }
+}
+
+async function handleBoFlashToggle() {
+  if (!scanner) return;
+  const result = await scanner.toggleTorch();
+  dom.btnBoFlash.classList.toggle('active', !!result);
+}
+
+async function handleBoSwitchCamera() {
+  if (!scanner) return;
+  dom.btnBoSwitchCamera.disabled = true;
+  try {
+    await scanner.switchCamera();
+    if (scanner.stream) {
+      dom.boCameraFeed.srcObject = scanner.stream;
+      dom.boCameraFeed.play().catch(() => {});
+    }
+    showToast('Camera switched');
+  } catch (e) {
+    showToast('Failed to switch camera', 'error');
+  } finally {
+    dom.btnBoSwitchCamera.disabled = false;
+  }
+}
+
+/* ── Barcode-Only Export Functions ── */
+
+function downloadTextBlob(text, filename, mimeType = 'text/plain;charset=utf-8') {
+  const blob = new Blob([text], { type: mimeType });
+  downloadBlob(blob, filename);
+}
+
+function exportBoTxt() {
+  if (barcodeOnlyList.length === 0) return;
+  // Chronological order (first scanned = first line)
+  const sorted = [...barcodeOnlyList].sort((a, b) => a.timestamp - b.timestamp);
+  const content = sorted.map(item => item.barcode).join('\r\n');
+  const dateStr = getLocalDateStr();
+  const filename = `Barcodes_${dateStr}_${sorted.length}items.txt`;
+  downloadTextBlob(content, filename);
+  showToast(`✓ Exported: ${filename}`, 'success');
+}
+
+function exportBoCsv() {
+  if (barcodeOnlyList.length === 0) return;
+  const sorted = [...barcodeOnlyList].sort((a, b) => a.timestamp - b.timestamp);
+  const rows = sorted.map((item, idx) => {
+    const d = new Date(item.timestamp);
+    const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const timeStr = d.toLocaleTimeString();
+    return `${idx + 1},="${item.barcode}","${dateStr}","${timeStr}"`;
+  });
+  const csvContent = '\uFEFF' + ['Serial,Barcode,Date,Time', ...rows].join('\r\n');
+  const dateStr = getLocalDateStr();
+  const filename = `Barcodes_${dateStr}_${sorted.length}items.csv`;
+  downloadTextBlob(csvContent, filename, 'text/csv;charset=utf-8');
+  showToast(`✓ Exported: ${filename}`, 'success');
+}
+
+function exportBoXlsx() {
+  if (barcodeOnlyList.length === 0) return;
+  const sorted = [...barcodeOnlyList].sort((a, b) => a.timestamp - b.timestamp);
+  const dateStr = getLocalDateStr();
+  const filename = `Barcodes_${dateStr}_${sorted.length}items.xls`;
+
+  // Standard Microsoft Excel XML Spreadsheet format with String types
+  const rowsXml = sorted.map((item, idx) => {
+    const d = new Date(item.timestamp);
+    const itemDateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const itemTimeStr = d.toLocaleTimeString();
+    return `
+   <Row>
+    <Cell><Data ss:Type="Number">${idx + 1}</Data></Cell>
+    <Cell ss:StyleID="sBarcode"><Data ss:Type="String">${escapeHtml(item.barcode)}</Data></Cell>
+    <Cell><Data ss:Type="String">${escapeHtml(itemDateStr)}</Data></Cell>
+    <Cell><Data ss:Type="String">${escapeHtml(itemTimeStr)}</Data></Cell>
+   </Row>`;
+  }).join('');
+
+  const xmlContent = `<?xml version="1.0"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:o="urn:schemas-microsoft-com:office:office"
+ xmlns:x="urn:schemas-microsoft-com:office:excel"
+ xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
+ <Styles>
+  <Style ss:ID="Default" ss:Name="Normal">
+   <Alignment ss:Vertical="Bottom"/>
+  </Style>
+  <Style ss:ID="sHeader">
+   <Font ss:Bold="1" ss:Color="#FFFFFF"/>
+   <Interior ss:Color="#4F46E5" ss:Pattern="Solid"/>
+   <Alignment ss:Horizontal="Center"/>
+  </Style>
+  <Style ss:ID="sBarcode">
+   <NumberFormat ss:Format="@"/>
+   <Alignment ss:Horizontal="Left"/>
+  </Style>
+ </Styles>
+ <Worksheet ss:Name="Scanned Barcodes">
+  <Table>
+   <Column ss:Width="50"/>
+   <Column ss:Width="160"/>
+   <Column ss:Width="100"/>
+   <Column ss:Width="100"/>
+   <Row ss:StyleID="sHeader">
+    <Cell><Data ss:Type="String">Serial</Data></Cell>
+    <Cell><Data ss:Type="String">Barcode</Data></Cell>
+    <Cell><Data ss:Type="String">Date</Data></Cell>
+    <Cell><Data ss:Type="String">Time</Data></Cell>
+   </Row>${rowsXml}
+  </Table>
+ </Worksheet>
+</Workbook>`;
+
+  downloadTextBlob(xmlContent, filename, 'application/vnd.ms-excel;charset=utf-8');
+  showToast(`✓ Exported: ${filename}`, 'success');
 }
