@@ -14,7 +14,7 @@
    Configuration & Quality Presets
    ═══════════════════════════════════════════ */
 const CONFIG = {
-  VERSION: '1.2.0',
+  VERSION: '1.2.3',
   DB_NAME: 'KuberanScannerDB',
   DB_VERSION: 1,
   STORE_NAME: 'photos',
@@ -330,6 +330,13 @@ function triggerShutterFlash() {
    Initialization
    ═══════════════════════════════════════════ */
 document.addEventListener('DOMContentLoaded', async () => {
+  // Check if app was recently updated
+  const storedVersion = localStorage.getItem('kuberan_app_version');
+  if (storedVersion && storedVersion !== CONFIG.VERSION) {
+    showToast(`App updated to v${CONFIG.VERSION}!`, 'success');
+  }
+  localStorage.setItem('kuberan_app_version', CONFIG.VERSION);
+
   loadSettings();
   applySettingsToUI();
 
@@ -1110,25 +1117,25 @@ function handleSaveSettings() {
 
 async function handleForceUpdate() {
   if (dom.btnForceUpdate) dom.btnForceUpdate.disabled = true;
-  showToast('Checking for updates…');
+  showToast('Updating app to latest version…');
 
   try {
-    if ('serviceWorker' in navigator) {
-      const registrations = await navigator.serviceWorker.getRegistrations();
-      for (const reg of registrations) {
-        await reg.update();
-      }
-    }
     if ('caches' in window) {
       const keys = await caches.keys();
       await Promise.all(keys.map(k => caches.delete(k)));
     }
-    showToast('Updated to latest! Reloading…', 'success');
+    if ('serviceWorker' in navigator) {
+      const registrations = await navigator.serviceWorker.getRegistrations();
+      for (const reg of registrations) {
+        await reg.unregister();
+      }
+    }
+    showToast('Updated! Reloading…', 'success');
     setTimeout(() => {
       window.location.reload(true);
-    }, 500);
+    }, 600);
   } catch (err) {
-    console.warn('[App] Manual update failed:', err);
+    console.warn('[App] Manual update error:', err);
     window.location.reload(true);
   }
 }
