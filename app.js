@@ -14,7 +14,7 @@
    Configuration & Quality Presets
    ═══════════════════════════════════════════ */
 const CONFIG = {
-  VERSION: '1.1.0',
+  VERSION: '1.2.0',
   DB_NAME: 'KuberanScannerDB',
   DB_VERSION: 1,
   STORE_NAME: 'photos',
@@ -1080,13 +1080,6 @@ function applySettingsToUI() {
   dom.chkVibration.checked = !!settings.vibration;
   if (dom.appVersionDisplay) {
     dom.appVersionDisplay.innerHTML = `Kuberan Scanner <strong>v${CONFIG.VERSION}</strong>`;
-  }
-
-  // Hide in installed standalone app until user requests ("keep in website only")
-  const isInstalledApp = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
-  const boModeGroup = dom.btnOpenBarcodeMode ? dom.btnOpenBarcodeMode.closest('.settings-group') : null;
-  if (boModeGroup) {
-    boModeGroup.hidden = isInstalledApp;
   }
 }
 
