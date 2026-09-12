@@ -270,6 +270,10 @@ class BarcodeScanner {
       await this.setZoom(this.zoomLevel);
 
     } catch (err) {
+      // CRITICAL: Release camera stream if acquired but video setup failed
+      if (this.stream) {
+        this.stop();
+      }
       console.error('[Scanner] Camera access failed:', err);
       let userFriendlyMsg;
 
@@ -339,11 +343,25 @@ class BarcodeScanner {
       this.stream = null;
     }
     if (this.video) {
+      try { this.video.pause(); } catch (e) {}
       this.video.srcObject = null;
+      this.video.style.transform = '';
     }
     if (this.activeVideo && this.activeVideo !== this.video) {
+      try { this.activeVideo.pause(); } catch (e) {}
       this.activeVideo.srcObject = null;
+      this.activeVideo.style.transform = '';
     }
+    // Release canvas memory
+    if (this.canvas) {
+      this.canvas.width = 0;
+      this.canvas.height = 0;
+    }
+    if (this._captureCanvas) {
+      this._captureCanvas.width = 0;
+      this._captureCanvas.height = 0;
+    }
+    this.zoomLevel = 1.0;
     this._ready = false;
   }
 
@@ -356,7 +374,13 @@ class BarcodeScanner {
     this.currentCameraIndex = (this.currentCameraIndex + 1) % this.availableCameras.length;
     const nextDevice = this.availableCameras[this.currentCameraIndex];
     this.stop();
-    await this.init(nextDevice.deviceId);
+    try {
+      await this.init(nextDevice.deviceId);
+    } catch (err) {
+      console.warn('[Scanner] Switch camera failed, falling back to default:', err);
+      // Attempt recovery with default camera
+      await this.init(null);
+    }
     if (this.activeVideo && this.activeVideo !== this.video && this.stream) {
       this.activeVideo.srcObject = this.stream;
       this.activeVideo.play().catch(() => {});
@@ -468,25 +492,45 @@ class BarcodeScanner {
    * @returns {Promise<{value: string, format: string}|null>}
    */
   scanUntilFound(onDetected, intervalMs = 150, timeoutMs = 5000) {
+    // Prevent orphaned intervals from previous calls
+    this.stopContinuousScan();
+
     return new Promise((resolve) => {
       let elapsed = 0;
+      let cancelled = false;
 
-      const interval = setInterval(async () => {
-        const result = await this.scanFrame();
-        if (result) {
-          clearInterval(interval);
-          if (onDetected) onDetected(result);
-          resolve(result);
-        } else {
-          elapsed += intervalMs;
-          if (timeoutMs > 0 && elapsed >= timeoutMs) {
-            clearInterval(interval);
-            resolve(null);
+      const scanTick = async () => {
+        if (cancelled) return;
+
+        try {
+          const result = await this.scanFrame();
+          if (cancelled) return;
+
+          if (result) {
+            cancelled = true;
+            this._scanTimeout = null;
+            if (onDetected) onDetected(result);
+            resolve(result);
+            return;
           }
+        } catch (e) {
+          // Scan frame error — continue trying
         }
-      }, intervalMs);
 
-      this._scanInterval = interval;
+        elapsed += intervalMs;
+        if (timeoutMs > 0 && elapsed >= timeoutMs) {
+          cancelled = true;
+          this._scanTimeout = null;
+          resolve(null);
+          return;
+        }
+
+        if (!cancelled) {
+          this._scanTimeout = setTimeout(scanTick, intervalMs);
+        }
+      };
+
+      this._scanTimeout = setTimeout(scanTick, intervalMs);
     });
   }
 
@@ -494,6 +538,10 @@ class BarcodeScanner {
     if (this._scanInterval) {
       clearInterval(this._scanInterval);
       this._scanInterval = null;
+    }
+    if (this._scanTimeout) {
+      clearTimeout(this._scanTimeout);
+      this._scanTimeout = null;
     }
   }
 
@@ -538,12 +586,17 @@ class BarcodeScanner {
       }
     }
 
-    this.canvas.width = targetW;
-    this.canvas.height = targetH;
-    this.ctx.drawImage(this.video, sx, sy, sWidth, sHeight, 0, 0, targetW, targetH);
+    // Use a dedicated canvas to avoid contention with scanFrame's canvas fallback
+    if (!this._captureCanvas) {
+      this._captureCanvas = document.createElement('canvas');
+      this._captureCtx = this._captureCanvas.getContext('2d');
+    }
+    this._captureCanvas.width = targetW;
+    this._captureCanvas.height = targetH;
+    this._captureCtx.drawImage(this.video, sx, sy, sWidth, sHeight, 0, 0, targetW, targetH);
 
     return new Promise((resolve) => {
-      this.canvas.toBlob(resolve, 'image/jpeg', quality);
+      this._captureCanvas.toBlob(resolve, 'image/jpeg', quality);
     });
   }
 

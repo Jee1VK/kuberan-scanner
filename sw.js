@@ -3,7 +3,7 @@
  * Cache-first strategy for app shell, network-first for external resources
  */
 
-const CACHE_NAME = 'kuberan-scanner-v17';
+const CACHE_NAME = 'kuberan-scanner-v18';
 
 /** App shell files to pre-cache */
 const APP_SHELL = [
@@ -25,7 +25,7 @@ const EXTERNAL_RESOURCES = [
 
 /* ── Install: Pre-cache app shell and dependencies (bypassing browser HTTP cache) ── */
 self.addEventListener('install', (event) => {
-  console.log('[SW] Installing v17…');
+  console.log('[SW] Installing v18…');
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then(async (cache) => {
@@ -45,7 +45,7 @@ self.addEventListener('install', (event) => {
 
 /* ── Activate: Clean up old caches immediately ── */
 self.addEventListener('activate', (event) => {
-  console.log('[SW] Activating v17…');
+  console.log('[SW] Activating v18…');
   event.waitUntil(
     caches.keys()
       .then((keys) => {
