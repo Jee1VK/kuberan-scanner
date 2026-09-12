@@ -293,14 +293,27 @@ class BarcodeScanner {
     // Initialize native barcode detector if available
     if (BarcodeScanner.isNativeSupported() && !this.detector) {
       try {
-        const supported = await BarcodeDetector.getSupportedFormats();
-        const usableFormats = this.formats.filter(f => supported.includes(f));
-        if (usableFormats.length > 0) {
-          this.detector = new BarcodeDetector({ formats: usableFormats });
-          console.log('[Scanner] Native BarcodeDetector ready. Formats:', usableFormats);
+        if (typeof BarcodeDetector.getSupportedFormats === 'function') {
+          const supported = await BarcodeDetector.getSupportedFormats();
+          const usableFormats = this.formats.filter(f => supported.includes(f));
+          if (usableFormats.length > 0) {
+            this.detector = new BarcodeDetector({ formats: usableFormats });
+            console.log('[Scanner] Native BarcodeDetector ready. Formats:', usableFormats);
+          } else {
+            this.detector = new BarcodeDetector();
+            console.log('[Scanner] Native BarcodeDetector ready (all formats).');
+          }
+        } else {
+          this.detector = new BarcodeDetector();
+          console.log('[Scanner] Native BarcodeDetector ready.');
         }
       } catch (err) {
-        console.warn('[Scanner] BarcodeDetector init failed:', err);
+        try {
+          this.detector = new BarcodeDetector();
+          console.log('[Scanner] Native BarcodeDetector fallback initialized.');
+        } catch (detectorErr) {
+          console.warn('[Scanner] BarcodeDetector init failed:', detectorErr);
+        }
       }
     }
 
@@ -425,6 +438,10 @@ class BarcodeScanner {
     } catch (err) {
       // Fallback: draw frame to canvas and detect
       try {
+        if (!this.canvas) {
+          this.canvas = document.createElement('canvas');
+          this.ctx = this.canvas.getContext('2d', { willReadFrequently: true });
+        }
         this.canvas.width = vid.videoWidth;
         this.canvas.height = vid.videoHeight;
         this.ctx.drawImage(vid, 0, 0);
@@ -559,7 +576,7 @@ class BarcodeScanner {
 
   isReady() {
     const vid = this.activeVideo || this.video;
-    return this._ready && vid && vid.readyState >= 2;
+    return this._ready && vid && (vid.videoWidth > 0 || vid.readyState >= 1);
   }
 
   hasNativeScanning() {

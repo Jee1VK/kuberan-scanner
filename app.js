@@ -128,6 +128,7 @@ const dom = {
   btnActionIconCamera: $('#btn-action-icon-camera'),
   btnActionIconBarcode: $('#btn-action-icon-barcode'),
   btnFlash:         $('#btn-flash'),
+  cameraControls:   $('#camera-controls'),
   btnManualEntry:   $('#btn-manual-entry'),
   btnRetryCamera:   $('#btn-retry-camera'),
   photoPreview:     $('#photo-preview-overlay'),
@@ -203,14 +204,14 @@ const dom = {
   btnBoBack:            $('#btn-bo-back'),
   boStatsBadge:         $('#bo-stats-badge'),
   boCount:              $('#bo-count'),
-  boCameraContainer:    $('#bo-camera-container'),
-  boCameraFeed:         $('#bo-camera-feed'),
-  boScanCanvas:         $('#bo-scan-canvas'),
-  boScanOverlay:        $('#bo-scan-overlay'),
-  boScanFrame:          $('#bo-scan-frame'),
-  boScanHint:           $('#bo-scan-hint'),
-  boZoomButtons:        $$('.bo-zoom-btn'),
-  btnBoSwitchCamera:    $('#btn-bo-switch-camera'),
+  boCameraContainer:    $('#camera-container'),
+  boCameraFeed:         $('#camera-feed'),
+  boScanCanvas:         $('#scan-canvas'),
+  boScanOverlay:        $('#scan-overlay'),
+  boScanFrame:          $('#scan-frame'),
+  boScanHint:           $('#scan-hint'),
+  boZoomButtons:        $$('.zoom-btn'),
+  btnBoSwitchCamera:    $('#btn-switch-camera'),
   btnBoFlash:           $('#btn-bo-flash'),
   btnBoManual:          $('#btn-bo-manual'),
   btnBoPause:           $('#btn-bo-pause'),
@@ -1408,6 +1409,9 @@ function saveBarcodeOnlyList() {
   } catch (e) { /* ignore */ }
 }
 
+let boScanTimeoutId = null;
+let isBoScanningBusy = false;
+
 function openBarcodeOnlyMode() {
   closeSettingsModal();
   isBarcodeOnlyActive = true;
@@ -1415,37 +1419,31 @@ function openBarcodeOnlyMode() {
   lastBoScanCode = null;
   lastBoScanTime = 0;
 
-  // Hide Main Photo App Elements
+  // 1. Hide Main Photo Mode Elements
   dom.appHeader.hidden = true;
   dom.stepIndicator.hidden = true;
-  dom.cameraSection.hidden = true;
+  if (dom.cameraControls) dom.cameraControls.hidden = true;
   dom.gallerySection.hidden = true;
   dom.actionBar.hidden = true;
+  dom.photoPreview.hidden = true;
+  dom.scanStatus.hidden = true;
 
-  // Show Barcode-Only Segment
+  // 2. Show Barcode Mode Header and Controls
+  dom.boHeader.hidden = false;
   dom.barcodeOnlySegment.hidden = false;
 
-  // Wire camera stream to barcode-only video feed
-  if (scanner && scanner.stream) {
-    dom.boCameraFeed.muted = true;
-    dom.boCameraFeed.playsInline = true;
-    dom.boCameraFeed.setAttribute('playsinline', '');
-    dom.boCameraFeed.setAttribute('webkit-playsinline', '');
-    dom.boCameraFeed.srcObject = scanner.stream;
-    dom.boCameraFeed.play().catch(() => {});
-    scanner.setActiveVideo(dom.boCameraFeed);
-  }
+  // 3. Keep Camera Section visible with continuous scanning overlay
+  dom.cameraSection.hidden = false;
+  dom.cameraFeed.hidden = false;
+  dom.scanOverlay.hidden = false;
+  dom.scanFrame.className = 'scanning';
+  dom.scanHint.textContent = 'Align barcode inside frame to scan';
 
-  // Multi-camera button visibility
-  if (dom.btnBoSwitchCamera && scanner) {
-    dom.btnBoSwitchCamera.hidden = !(scanner.availableCameras && scanner.availableCameras.length > 1);
-  }
-
-  // Update controls and render list
+  // 4. Update controls and render list
   updateBoPauseIcon();
   renderBarcodeOnlyList();
 
-  // Start continuous scan loop
+  // 5. Start continuous barcode scanning on the active camera feed
   startBoScanningLoop();
   window.scrollTo({ top: 0, behavior: 'instant' });
   showToast('Barcode-Only Rapid Scanner ready');
@@ -1455,59 +1453,70 @@ function closeBarcodeOnlyMode() {
   stopBoScanningLoop();
   isBarcodeOnlyActive = false;
 
-  // Hide Barcode-Only Segment
+  // 1. Hide Barcode-Only Elements
+  dom.boHeader.hidden = true;
   dom.barcodeOnlySegment.hidden = true;
 
-  // Restore Main Photo App Elements
+  // 2. Restore Main Photo App Elements
   dom.appHeader.hidden = false;
   dom.stepIndicator.hidden = false;
   dom.cameraSection.hidden = false;
+  if (dom.cameraControls) dom.cameraControls.hidden = false;
   dom.gallerySection.hidden = false;
   dom.actionBar.hidden = photos.length === 0;
 
-  // Re-wire camera stream to main video feed
-  if (scanner && scanner.stream) {
-    dom.cameraFeed.muted = true;
-    dom.cameraFeed.playsInline = true;
-    dom.cameraFeed.setAttribute('playsinline', '');
-    dom.cameraFeed.setAttribute('webkit-playsinline', '');
-    dom.cameraFeed.srcObject = scanner.stream;
-    dom.cameraFeed.play().catch(() => {});
-    scanner.setActiveVideo(dom.cameraFeed);
-  }
-
+  // 3. Reset to Step 1 (Photo)
   setStep(STEP.PHOTO);
 }
 
 function startBoScanningLoop() {
   stopBoScanningLoop();
-  boScanInterval = setInterval(async () => {
-    if (!isBarcodeOnlyActive || isBoScanningPaused) return;
-    if (!dom.modalBoManualOverlay.hidden || !dom.modalBoConfirmOverlay.hidden) return;
-    if (!scanner || !scanner.isReady()) return;
 
+  const scanTick = async () => {
+    if (!isBarcodeOnlyActive) return;
+
+    if (isBoScanningPaused || !dom.modalBoManualOverlay.hidden || !dom.modalBoConfirmOverlay.hidden) {
+      boScanTimeoutId = setTimeout(scanTick, 250);
+      return;
+    }
+
+    if (!scanner || !dom.cameraFeed || !dom.cameraFeed.videoWidth || isBoScanningBusy) {
+      boScanTimeoutId = setTimeout(scanTick, 150);
+      return;
+    }
+
+    isBoScanningBusy = true;
     try {
-      const detected = await scanner.scanFrame();
+      const detected = await scanner.scanFrame(dom.cameraFeed);
       if (detected && detected.value) {
         handleBoBarcodeDetected(detected.value.trim());
       }
     } catch (e) {
-      /* ignore occasional frame decode errors */
+      console.debug('[BoScan] Frame scan warning:', e);
+    } finally {
+      isBoScanningBusy = false;
     }
-  }, 130);
+
+    if (isBarcodeOnlyActive) {
+      boScanTimeoutId = setTimeout(scanTick, 100);
+    }
+  };
+
+  boScanTimeoutId = setTimeout(scanTick, 60);
 }
 
 function stopBoScanningLoop() {
-  if (boScanInterval) {
-    clearInterval(boScanInterval);
-    boScanInterval = null;
+  if (boScanTimeoutId) {
+    clearTimeout(boScanTimeoutId);
+    boScanTimeoutId = null;
   }
+  isBoScanningBusy = false;
 }
 
 function handleBoBarcodeDetected(code) {
   if (!code) return;
 
-  // Debounce consecutive scans of the exact same code
+  // Debounce consecutive scans of the exact same code (1.8 seconds)
   if (code === lastBoScanCode && (Date.now() - lastBoScanTime) < 1800) {
     return;
   }
@@ -1522,8 +1531,14 @@ function handleBoBarcodeDetected(code) {
     // ❌ Duplicate Barcode: Warning Tone, Vibration, Red Flash, Warning Toast
     playErrorTone();
     triggerHaptic([120, 80, 120]);
-    dom.boScanFrame.classList.add('error');
-    setTimeout(() => dom.boScanFrame.classList.remove('error'), 1200);
+    dom.scanFrame.classList.remove('scanning', 'success');
+    dom.scanFrame.classList.add('error');
+    setTimeout(() => {
+      dom.scanFrame.classList.remove('error');
+      if (isBarcodeOnlyActive && !isBoScanningPaused) {
+        dom.scanFrame.classList.add('scanning');
+      }
+    }, 1200);
     showToast(`❌ Duplicate Barcode: ${code} already in list!`, 'error');
     return;
   }
@@ -1531,8 +1546,14 @@ function handleBoBarcodeDetected(code) {
   // ✓ Unique Barcode: Success Tone, Vibration, Green Flash, Added to List
   playBarcodeBeep();
   triggerHaptic([60, 40, 60]);
-  dom.boScanFrame.classList.add('success');
-  setTimeout(() => dom.boScanFrame.classList.remove('success'), 600);
+  dom.scanFrame.classList.remove('scanning', 'error');
+  dom.scanFrame.classList.add('success');
+  setTimeout(() => {
+    dom.scanFrame.classList.remove('success');
+    if (isBarcodeOnlyActive && !isBoScanningPaused) {
+      dom.scanFrame.classList.add('scanning');
+    }
+  }, 600);
 
   const item = {
     id: generateId(),
@@ -1657,10 +1678,10 @@ function toggleBoScanningPause() {
   isBoScanningPaused = !isBoScanningPaused;
   updateBoPauseIcon();
   if (isBoScanningPaused) {
-    dom.boScanFrame.classList.remove('scanning');
+    dom.scanFrame.classList.remove('scanning');
     showToast('Scanner paused');
   } else {
-    dom.boScanFrame.classList.add('scanning');
+    dom.scanFrame.classList.add('scanning');
     showToast('Scanner resumed');
   }
 }

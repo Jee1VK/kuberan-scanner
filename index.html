@@ -11,7 +11,7 @@
   <link rel="manifest" href="manifest.json">
   <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
-  <link rel="stylesheet" href="style.css?v=1.2.1">
+  <link rel="stylesheet" href="style.css?v=1.2.2">
   <title>Kuberan Scanner</title>
 </head>
 <body>
@@ -60,6 +60,24 @@
             <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/>
           </svg>
         </button>
+      </div>
+    </header>
+
+    <!-- ═══════════ BARCODE-ONLY HEADER (Active in Barcode Mode) ═══════════ -->
+    <header id="bo-header" class="bo-header" hidden>
+      <button type="button" id="btn-bo-back" class="btn btn-icon btn-small" title="Back to Photo Scanner" aria-label="Back to Photo Scanner">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="15 18 9 12 15 6"/>
+        </svg>
+      </button>
+      <div class="bo-header-title">
+        <h2>Barcode Scanner</h2>
+        <span class="bo-subtitle">Rapid Mode • No Photos</span>
+      </div>
+      <div class="bo-header-right">
+        <span id="bo-stats-badge" class="stats-badge">
+          <span id="bo-count">0</span> scanned
+        </span>
       </div>
     </header>
 
@@ -215,85 +233,31 @@
 
     <!-- ═══════════ BARCODE-ONLY RAPID SCANNER SEGMENT ═══════════ -->
     <div id="barcode-only-segment" class="bo-segment" hidden>
-      <!-- Header -->
-      <header id="bo-header" class="bo-header">
-        <button type="button" id="btn-bo-back" class="btn btn-icon btn-small" title="Back to Photo Scanner" aria-label="Back to Photo Scanner">
+      <!-- Camera Quick Controls -->
+      <div class="bo-camera-controls">
+        <button type="button" id="btn-bo-flash" class="btn btn-icon" title="Toggle torch" aria-label="Toggle torch">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="15 18 9 12 15 6"/>
+            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
           </svg>
         </button>
-        <div class="bo-header-title">
-          <h2>Barcode Scanner</h2>
-          <span class="bo-subtitle">Rapid Mode • No Photos</span>
-        </div>
-        <div class="bo-header-right">
-          <span id="bo-stats-badge" class="stats-badge">
-            <span id="bo-count">0</span> scanned
-          </span>
-        </div>
-      </header>
-
-      <!-- Camera Section -->
-      <section class="bo-camera-section">
-        <div id="bo-camera-container">
-          <video id="bo-camera-feed" autoplay playsinline muted></video>
-          <canvas id="bo-scan-canvas" hidden></canvas>
-
-          <!-- Top bar (Zoom & Camera Switch) -->
-          <div id="bo-camera-top-bar">
-            <div class="zoom-pill-group">
-              <button type="button" class="zoom-btn active bo-zoom-btn" data-zoom="1.0" aria-label="1x Zoom">1x</button>
-              <button type="button" class="zoom-btn bo-zoom-btn" data-zoom="2.0" aria-label="2x Zoom">2x</button>
-            </div>
-            <button type="button" id="btn-bo-switch-camera" class="cam-overlay-btn" title="Switch camera" aria-label="Switch camera" hidden>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M20 10c0-4.418-3.582-8-8-8s-8 3.582-8 8c0 2.148.847 4.099 2.227 5.541"/>
-                <path d="M4 14c0 4.418 3.582 8 8 8s8-3.582 8-8c0-2.148-.847-4.099-2.227-5.541"/>
-                <polyline points="20 4 20 10 14 10"/>
-                <polyline points="4 20 4 14 10 14"/>
-              </svg>
-            </button>
-          </div>
-
-          <!-- Scan overlay with corner brackets & animated line -->
-          <div id="bo-scan-overlay">
-            <div id="bo-scan-frame" class="scanning">
-              <span class="corner tl"></span>
-              <span class="corner tr"></span>
-              <span class="corner bl"></span>
-              <span class="corner br"></span>
-              <div id="bo-scan-line"></div>
-            </div>
-            <p id="bo-scan-hint">Align barcode inside frame to scan</p>
-          </div>
-        </div>
-
-        <!-- Camera Quick Controls -->
-        <div class="bo-camera-controls">
-          <button type="button" id="btn-bo-flash" class="btn btn-icon" title="Toggle torch" aria-label="Toggle torch">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
-            </svg>
-          </button>
-          <button type="button" id="btn-bo-manual" class="btn btn-primary" style="flex:1;">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="4 7 4 4 20 4 20 7"/>
-              <line x1="9" y1="20" x2="15" y2="20"/>
-              <line x1="12" y1="4" x2="12" y2="20"/>
-            </svg>
-            <span>Type Barcode</span>
-          </button>
-          <button type="button" id="btn-bo-pause" class="btn btn-icon" title="Pause / Resume Scanner" aria-label="Pause / Resume Scanner">
-            <svg id="icon-bo-pause" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="6" y="4" width="4" height="16"/>
-              <rect x="14" y="4" width="4" height="16"/>
-            </svg>
-            <svg id="icon-bo-play" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" hidden>
-              <polygon points="5 3 19 12 5 21 5 3"/>
-            </svg>
-          </button>
-        </div>
-      </section>
+        <button type="button" id="btn-bo-manual" class="btn btn-primary" style="flex:1;">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="4 7 4 4 20 4 20 7"/>
+            <line x1="9" y1="20" x2="15" y2="20"/>
+            <line x1="12" y1="4" x2="12" y2="20"/>
+          </svg>
+          <span>Type Barcode</span>
+        </button>
+        <button type="button" id="btn-bo-pause" class="btn btn-icon" title="Pause / Resume Scanner" aria-label="Pause / Resume Scanner">
+          <svg id="icon-bo-pause" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="6" y="4" width="4" height="16"/>
+            <rect x="14" y="4" width="4" height="16"/>
+          </svg>
+          <svg id="icon-bo-play" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" hidden>
+            <polygon points="5 3 19 12 5 21 5 3"/>
+          </svg>
+        </button>
+      </div>
 
       <!-- Barcode List Section -->
       <section class="bo-list-section">
@@ -592,8 +556,8 @@
           referrerpolicy="no-referrer"></script>
 
   <!-- App Scripts -->
-  <script src="scanner.js?v=1.2.1"></script>
-  <script src="app.js?v=1.2.1"></script>
+  <script src="scanner.js?v=1.2.2"></script>
+  <script src="app.js?v=1.2.2"></script>
 
   <!-- Service Worker Registration with Auto-Update -->
   <script>
@@ -607,7 +571,7 @@
       });
 
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./sw.js?v=1.2.1', { updateViaCache: 'none' })
+        navigator.serviceWorker.register('./sw.js?v=1.2.2', { updateViaCache: 'none' })
           .then((reg) => {
             console.log('[SW] Registered:', reg.scope);
             reg.update();
