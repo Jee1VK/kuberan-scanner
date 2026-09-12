@@ -11,7 +11,7 @@
   <link rel="manifest" href="manifest.json">
   <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=1.2.0">
   <title>Kuberan Scanner</title>
 </head>
 <body>
@@ -592,8 +592,8 @@
           referrerpolicy="no-referrer"></script>
 
   <!-- App Scripts -->
-  <script src="scanner.js"></script>
-  <script src="app.js"></script>
+  <script src="scanner.js?v=1.2.0"></script>
+  <script src="app.js?v=1.2.0"></script>
 
   <!-- Service Worker Registration with Auto-Update -->
   <script>
@@ -607,13 +607,21 @@
       });
 
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' })
+        navigator.serviceWorker.register('./sw.js?v=1.2.0', { updateViaCache: 'none' })
           .then((reg) => {
             console.log('[SW] Registered:', reg.scope);
             reg.update();
-            setInterval(() => reg.update(), 15 * 60 * 1000);
+            setInterval(() => reg.update(), 5 * 60 * 1000);
           })
           .catch((err) => console.warn('[SW] Registration failed:', err));
+      });
+
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') {
+          navigator.serviceWorker.getRegistration().then((reg) => {
+            if (reg) reg.update();
+          });
+        }
       });
     }
   </script>
