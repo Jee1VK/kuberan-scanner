@@ -11,7 +11,7 @@
   <link rel="manifest" href="manifest.json">
   <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
-  <link rel="stylesheet" href="style.css?v=1.2.4">
+  <link rel="stylesheet" href="style.css?v=1.2.5">
   <title>Kuberan Scanner</title>
 </head>
 <body>
@@ -404,6 +404,17 @@
         </div>
 
         <div class="settings-group">
+          <label class="settings-label">Barcode Filtering</label>
+          <label class="setting-toggle-row">
+            <div>
+              <span>Numeric Only (0-9)</span>
+              <small style="display:block; color:var(--text-muted); font-size:0.75rem;">Ignores misread letters and noise (e.g. "F")</small>
+            </div>
+            <input type="checkbox" id="setting-numeric-only" checked>
+          </label>
+        </div>
+
+        <div class="settings-group">
           <label class="settings-label">Audio &amp; Haptic Alerts</label>
           <label class="setting-toggle-row">
             <span>Barcode Detection Beep</span>
@@ -441,7 +452,7 @@
           <button type="button" id="btn-save-settings" class="btn btn-primary">Done</button>
         </div>
         <div class="settings-version-row">
-          <span id="app-version-display">Kuberan Scanner <strong>v1.2.4</strong></span>
+          <span id="app-version-display">Kuberan Scanner <strong>v1.2.5</strong></span>
           <button type="button" id="btn-force-update" class="btn-version-update" title="Check for latest version">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <polyline points="23 4 23 10 17 10"/>
@@ -556,8 +567,8 @@
           referrerpolicy="no-referrer"></script>
 
   <!-- App Scripts -->
-  <script src="scanner.js?v=1.2.4"></script>
-  <script src="app.js?v=1.2.4"></script>
+  <script src="scanner.js?v=1.2.5"></script>
+  <script src="app.js?v=1.2.5"></script>
 
   <!-- Service Worker Registration with Auto-Update -->
   <script>
@@ -571,7 +582,7 @@
       });
 
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./sw.js?v=1.2.4', { updateViaCache: 'none' })
+        navigator.serviceWorker.register('./sw.js?v=1.2.5', { updateViaCache: 'none' })
           .then((reg) => {
             console.log('[SW] Registered:', reg.scope);
             reg.update();

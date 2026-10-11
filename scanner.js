@@ -489,9 +489,10 @@ class BarcodeScanner {
    * @param {function} onDetected
    * @param {number} intervalMs
    * @param {number} timeoutMs
+   * @param {function|null} validator Optional validator fn (e.g. numeric check)
    * @returns {Promise<{value: string, format: string}|null>}
    */
-  scanUntilFound(onDetected, intervalMs = 150, timeoutMs = 5000) {
+  scanUntilFound(onDetected, intervalMs = 150, timeoutMs = 5000, validator = null) {
     // Prevent orphaned intervals from previous calls
     this.stopContinuousScan();
 
@@ -506,7 +507,7 @@ class BarcodeScanner {
           const result = await this.scanFrame();
           if (cancelled) return;
 
-          if (result) {
+          if (result && (!validator || validator(result.value, result.format))) {
             cancelled = true;
             this._scanTimeout = null;
             if (onDetected) onDetected(result);

@@ -14,7 +14,7 @@
    Configuration & Quality Presets
    ═══════════════════════════════════════════ */
 const CONFIG = {
-  VERSION: '1.2.4',
+  VERSION: '1.2.5',
   DB_NAME: 'KuberanScannerDB',
   DB_VERSION: 1,
   STORE_NAME: 'photos',
@@ -41,6 +41,7 @@ const STEP = {
    ═══════════════════════════════════════════ */
 let settings = {
   compression: 'balanced',
+  numericOnly: true,
   sound: true,
   shutterSound: true,
   vibration: true
@@ -162,6 +163,7 @@ const dom = {
   btnSettingsClose: $('#btn-settings-close'),
   btnSaveSettings:  $('#btn-save-settings'),
   radioCompression: $$('input[name="compression"]'),
+  chkNumericOnly:   $('#setting-numeric-only'),
   chkSound:         $('#setting-sound'),
   chkShutterSound:  $('#setting-shutter-sound'),
   chkVibration:     $('#setting-vibration'),
@@ -824,7 +826,8 @@ async function startBarcodeScanning() {
   const barcode = await scanner.scanUntilFound(
     null,
     CONFIG.SCAN_INTERVAL_MS,
-    CONFIG.SCAN_TIMEOUT_MS
+    CONFIG.SCAN_TIMEOUT_MS,
+    (val) => isValidBarcode(val)
   );
 
   dom.scanFrame.classList.remove('scanning', 'success');
@@ -887,6 +890,15 @@ async function handleModalSave() {
     dom.manualBarcode.focus();
     dom.manualBarcode.style.borderColor = 'var(--danger)';
     setTimeout(() => dom.manualBarcode.style.borderColor = '', 1000);
+    return;
+  }
+
+  if (!isValidBarcode(barcode)) {
+    dom.manualBarcode.focus();
+    dom.manualBarcode.select();
+    dom.manualBarcode.style.borderColor = 'var(--danger)';
+    setTimeout(() => dom.manualBarcode.style.borderColor = '', 1000);
+    showToast('⚠️ Please enter numeric digits (0-9) only', 'error');
     return;
   }
 
@@ -1096,6 +1108,7 @@ function closeSettingsModal() {
 
 function applySettingsToUI() {
   dom.radioCompression.forEach(r => { r.checked = r.value === settings.compression; });
+  if (dom.chkNumericOnly) dom.chkNumericOnly.checked = settings.numericOnly !== false;
   dom.chkSound.checked = !!settings.sound;
   dom.chkShutterSound.checked = !!settings.shutterSound;
   dom.chkVibration.checked = !!settings.vibration;
@@ -1107,6 +1120,7 @@ function applySettingsToUI() {
 function handleSaveSettings() {
   const selected = Array.from(dom.radioCompression).find(r => r.checked);
   if (selected) settings.compression = selected.value;
+  if (dom.chkNumericOnly) settings.numericOnly = dom.chkNumericOnly.checked;
   settings.sound = dom.chkSound.checked;
   settings.shutterSound = dom.chkShutterSound.checked;
   settings.vibration = dom.chkVibration.checked;
@@ -1397,6 +1411,23 @@ function escapeHtml(str) {
   return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+/**
+ * Validates a barcode string based on user settings (e.g. numeric-only filter).
+ * Filters out misread framing letters and OCR/sensor noise (such as 'F').
+ * @param {string} code
+ * @returns {boolean}
+ */
+function isValidBarcode(code) {
+  if (!code || typeof code !== 'string') return false;
+  const trimmed = code.trim();
+  if (!trimmed) return false;
+  if (settings.numericOnly !== false) {
+    // Only accept pure digits
+    return /^\d+$/.test(trimmed);
+  }
+  return true;
+}
+
 /* ═══════════════════════════════════════════
    Barcode-Only Rapid Scanner Segment
    ═══════════════════════════════════════════ */
@@ -1495,7 +1526,7 @@ function startBoScanningLoop() {
     isBoScanningBusy = true;
     try {
       const detected = await scanner.scanFrame(dom.cameraFeed);
-      if (detected && detected.value) {
+      if (detected && detected.value && isValidBarcode(detected.value)) {
         handleBoBarcodeDetected(detected.value.trim());
       }
     } catch (e) {
@@ -1652,6 +1683,15 @@ function handleBoManualAdd() {
     dom.inputBoManual.style.borderColor = 'var(--danger)';
     dom.inputBoManual.focus();
     setTimeout(() => dom.inputBoManual.style.borderColor = '', 1000);
+    return;
+  }
+
+  if (!isValidBarcode(code)) {
+    dom.inputBoManual.focus();
+    dom.inputBoManual.select();
+    dom.inputBoManual.style.borderColor = 'var(--danger)';
+    setTimeout(() => dom.inputBoManual.style.borderColor = '', 1000);
+    showToast('⚠️ Please enter numeric digits (0-9) only', 'error');
     return;
   }
 
