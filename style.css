@@ -869,6 +869,12 @@ body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  cursor: pointer;
+  transition: color var(--transition);
+}
+
+.lightbox-title:hover {
+  color: var(--primary-light);
 }
 
 .lightbox-size {
@@ -1380,6 +1386,18 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   letter-spacing: 0.5px;
+  cursor: pointer;
+  transition: color var(--transition);
+}
+
+.bo-card-code:hover {
+  color: var(--primary-light);
+}
+
+.bo-edit-hint {
+  font-size: 0.75rem;
+  opacity: 0.55;
+  margin-left: 4px;
 }
 
 .bo-card-time {

@@ -10,8 +10,8 @@ class BarcodeScanner {
    */
   constructor(videoElement, canvasElement) {
     this.video = videoElement;
-    this.canvas = canvasElement;
-    this.ctx = canvasElement.getContext('2d', { willReadFrequently: true });
+    this.canvas = canvasElement || null;
+    this.ctx = canvasElement ? canvasElement.getContext('2d', { willReadFrequently: true }) : null;
     this.detector = null;
     this.stream = null;
     this._ready = false;
@@ -189,6 +189,15 @@ class BarcodeScanner {
 
       this.video.srcObject = this.stream;
 
+      // Refresh device list after permission grant so all hardware cameras & labels are visible
+      try {
+        if (navigator.mediaDevices.enumerateDevices) {
+          const devices = await navigator.mediaDevices.enumerateDevices();
+          const videoDevs = devices.filter(d => d.kind === 'videoinput');
+          if (videoDevs.length > 0) this.availableCameras = videoDevs;
+        }
+      } catch (e) { /* ignore */ }
+
       // Update current camera index
       const activeTrack = this.stream.getVideoTracks()[0];
       if (activeTrack && this.availableCameras.length > 0) {
@@ -199,7 +208,7 @@ class BarcodeScanner {
         }
       }
 
-      // Check hardware zoom capabilities
+      // Check hardware zoom, continuous auto-focus, and continuous exposure capabilities
       if (activeTrack && typeof activeTrack.getCapabilities === 'function') {
         try {
           const caps = activeTrack.getCapabilities();
@@ -208,8 +217,20 @@ class BarcodeScanner {
             this.zoomMin = caps.zoom.min || 1.0;
             this.zoomMax = Math.min(caps.zoom.max || 3.0, 5.0);
           }
+
+          // Enable continuous autofocus and exposure when supported by hardware
+          const advancedConstraints = {};
+          if (Array.isArray(caps.focusMode) && caps.focusMode.includes('continuous')) {
+            advancedConstraints.focusMode = 'continuous';
+          }
+          if (Array.isArray(caps.exposureMode) && caps.exposureMode.includes('continuous')) {
+            advancedConstraints.exposureMode = 'continuous';
+          }
+          if (Object.keys(advancedConstraints).length > 0 && typeof activeTrack.applyConstraints === 'function') {
+            activeTrack.applyConstraints({ advanced: [advancedConstraints] }).catch(() => {});
+          }
         } catch (e) {
-          console.warn('[Scanner] Zoom capabilities check error:', e);
+          console.warn('[Scanner] Capabilities check error:', e);
         }
       }
 
@@ -454,10 +475,13 @@ class BarcodeScanner {
       // First attempt direct video detection (fastest, zero canvas overhead)
       const barcodes = await this.detector.detect(vid);
       if (barcodes && barcodes.length > 0) {
-        return {
-          value: barcodes[0].rawValue,
-          format: barcodes[0].format
-        };
+        const val = barcodes[0].rawValue ?? barcodes[0].value ?? '';
+        if (val) {
+          return {
+            value: String(val),
+            format: barcodes[0].format
+          };
+        }
       }
     } catch (err) {
       // Fallback: draw frame to canvas and detect
@@ -471,10 +495,13 @@ class BarcodeScanner {
         this.ctx.drawImage(vid, 0, 0);
         const barcodes = await this.detector.detect(this.canvas);
         if (barcodes && barcodes.length > 0) {
-          return {
-            value: barcodes[0].rawValue,
-            format: barcodes[0].format
-          };
+          const val = barcodes[0].rawValue ?? barcodes[0].value ?? '';
+          if (val) {
+            return {
+              value: String(val),
+              format: barcodes[0].format
+            };
+          }
         }
       } catch (innerErr) {
         console.debug('[Scanner] Frame scan error:', innerErr.message);
@@ -486,10 +513,11 @@ class BarcodeScanner {
 
   /**
    * Start scanning continuously until a barcode is found.
+   * Requires 2 consecutive matching frames (consensus) to eliminate single-frame motion blur/glare misreads.
    * @param {function} onDetected
    * @param {number} intervalMs
    * @param {number} timeoutMs
-   * @param {function|null} validator Optional validator fn (e.g. numeric check)
+   * @param {function|null} validator Optional validator fn (e.g. numeric & length check)
    * @returns {Promise<{value: string, format: string}|null>}
    */
   scanUntilFound(onDetected, intervalMs = 150, timeoutMs = 5000, validator = null) {
@@ -499,26 +527,47 @@ class BarcodeScanner {
     return new Promise((resolve) => {
       let elapsed = 0;
       let cancelled = false;
+      let lastCandidate = null;
+      let candidateCount = 0;
 
       const scanTick = async () => {
         if (cancelled) return;
+
+        let nextDelay = intervalMs;
 
         try {
           const result = await this.scanFrame();
           if (cancelled) return;
 
-          if (result && (!validator || validator(result.value, result.format))) {
-            cancelled = true;
-            this._scanTimeout = null;
-            if (onDetected) onDetected(result);
-            resolve(result);
-            return;
+          const trimmedVal = result && result.value ? result.value.trim() : '';
+          if (trimmedVal && (!validator || validator(trimmedVal, result.format))) {
+            if (trimmedVal === lastCandidate) {
+              candidateCount += 1;
+            } else {
+              lastCandidate = trimmedVal;
+              candidateCount = 1;
+            }
+
+            if (candidateCount >= 2) {
+              cancelled = true;
+              this._scanTimeout = null;
+              const finalResult = { value: trimmedVal, format: result.format };
+              if (onDetected) onDetected(finalResult);
+              resolve(finalResult);
+              return;
+            }
+
+            // Fast verification tick (50ms) when first candidate frame is seen so consensus feels instant
+            nextDelay = Math.min(intervalMs, 50);
+          } else {
+            lastCandidate = null;
+            candidateCount = 0;
           }
         } catch (e) {
           // Scan frame error — continue trying
         }
 
-        elapsed += intervalMs;
+        elapsed += nextDelay;
         if (timeoutMs > 0 && elapsed >= timeoutMs) {
           cancelled = true;
           this._scanTimeout = null;
@@ -527,7 +576,7 @@ class BarcodeScanner {
         }
 
         if (!cancelled) {
-          this._scanTimeout = setTimeout(scanTick, intervalMs);
+          this._scanTimeout = setTimeout(scanTick, nextDelay);
         }
       };
 

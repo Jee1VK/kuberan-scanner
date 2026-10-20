@@ -14,7 +14,7 @@
    Configuration & Quality Presets
    ═══════════════════════════════════════════ */
 const CONFIG = {
-  VERSION: '1.2.5',
+  VERSION: '1.2.6',
   DB_NAME: 'KuberanScannerDB',
   DB_VERSION: 1,
   STORE_NAME: 'photos',
@@ -387,6 +387,29 @@ function handleNameSubmit() {
   initCamera();
 }
 
+/* ── Screen Wake Lock (prevents phone screen from dimming/locking while scanning) ── */
+let wakeLockSentinel = null;
+
+async function requestWakeLock() {
+  try {
+    if ('wakeLock' in navigator && document.visibilityState === 'visible') {
+      if (wakeLockSentinel && !wakeLockSentinel.released) return;
+      wakeLockSentinel = await navigator.wakeLock.request('screen');
+      wakeLockSentinel.addEventListener('release', () => {
+        wakeLockSentinel = null;
+      });
+    }
+  } catch (e) {
+    // Wake Lock not supported or battery saver active — ignore silently
+  }
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && scanner) {
+    requestWakeLock();
+  }
+});
+
 /* ── Camera initialization ── */
 async function initCamera() {
   try {
@@ -400,6 +423,7 @@ async function initCamera() {
 
     scanner = new BarcodeScanner(dom.cameraFeed, dom.scanCanvas);
     await scanner.init();
+    requestWakeLock();
 
     if (!scanner.hasNativeScanning()) {
       dom.scanHint.textContent = 'Manual barcode entry mode';
@@ -581,6 +605,9 @@ function bindEvents() {
   dom.lightbox.addEventListener('click', (e) => {
     if (e.target === dom.lightbox || e.target.classList.contains('lightbox-body')) closeLightbox();
   });
+  if (dom.lightboxTitle) {
+    dom.lightboxTitle.addEventListener('click', handleLightboxEditBarcode);
+  }
   dom.btnLightboxRotate.addEventListener('click', handleLightboxRotate);
   if (dom.btnLightboxRetake) {
     dom.btnLightboxRetake.addEventListener('click', handleLightboxRetake);
@@ -699,12 +726,20 @@ function bindEvents() {
     });
   }
 
-  // Barcode-Only Item Click (Delete)
+  // Barcode-Only Item Click (Delete or Edit Barcode)
   if (dom.boItemsList) {
     dom.boItemsList.addEventListener('click', (e) => {
       const delBtn = e.target.closest('.bo-card-delete');
       if (delBtn) {
         handleBoDelete(delBtn.dataset.id);
+        return;
+      }
+      const editCode = e.target.closest('.bo-card-code');
+      if (editCode) {
+        const card = editCode.closest('.bo-card');
+        if (card && card.dataset.id) {
+          handleBoEditBarcode(card.dataset.id);
+        }
       }
     });
   }
@@ -893,7 +928,7 @@ async function handleModalSave() {
     return;
   }
 
-  if (!isValidBarcode(barcode)) {
+  if (!isValidBarcode(barcode, true)) {
     dom.manualBarcode.focus();
     dom.manualBarcode.select();
     dom.manualBarcode.style.borderColor = 'var(--danger)';
@@ -1022,11 +1057,41 @@ function updateStats() {
    ═══════════════════════════════════════════ */
 function openLightbox(photo) {
   activeLightboxPhoto = photo;
-  dom.lightboxTitle.textContent = photo.fileName;
+  dom.lightboxTitle.textContent = `${photo.fileName} ✎`;
+  dom.lightboxTitle.title = 'Tap to edit barcode number';
   dom.lightboxSize.textContent = `${formatSize(photo.size)} • ${new Date(photo.timestamp).toLocaleTimeString()}`;
   if (!photo._blobUrl) photo._blobUrl = URL.createObjectURL(photo.blob);
   dom.lightboxImg.src = photo._blobUrl;
   dom.lightbox.hidden = false;
+}
+
+async function handleLightboxEditBarcode() {
+  if (!activeLightboxPhoto) return;
+  const currentCode = activeLightboxPhoto.barcode;
+  const input = prompt('Edit barcode number for this photo:', currentCode);
+  if (input === null) return;
+  const newCode = input.trim();
+  if (!newCode || newCode === currentCode) return;
+
+  if (!isValidBarcode(newCode, true)) {
+    showToast('⚠️ Please enter numeric digits (0-9) only', 'error');
+    return;
+  }
+
+  const isDuplicate = photos.some(p => p.id !== activeLightboxPhoto.id && p.barcode === newCode);
+  if (isDuplicate) {
+    playErrorTone();
+    triggerHaptic([120, 80, 120]);
+    showToast(`❌ Barcode ${newCode} already exists!`, 'error');
+    return;
+  }
+
+  activeLightboxPhoto.barcode = newCode;
+  activeLightboxPhoto.fileName = `${newCode}.jpg`;
+  dom.lightboxTitle.textContent = `${activeLightboxPhoto.fileName} ✎`;
+  await persistPhoto(activeLightboxPhoto);
+  renderGallery();
+  showToast(`✓ Renamed to ${activeLightboxPhoto.fileName}`, 'success');
 }
 
 function closeLightbox() {
@@ -1412,20 +1477,21 @@ function escapeHtml(str) {
 }
 
 /**
- * Validates a barcode string based on user settings (e.g. numeric-only filter).
- * Filters out misread framing letters and OCR/sensor noise (such as 'F').
+ * Validates a barcode string based on user settings (e.g. numeric-only filter & min length).
+ * Filters out misread framing letters (such as 'F') and short 1-3 digit fabric/glare reflections.
  * @param {string} code
+ * @param {boolean} isManual True when entered manually by user (allows any digit length)
  * @returns {boolean}
  */
-function isValidBarcode(code) {
+function isValidBarcode(code, isManual = false) {
   if (!code || typeof code !== 'string') return false;
   const trimmed = code.trim();
   if (!trimmed) return false;
   if (settings.numericOnly !== false) {
-    // Only accept pure digits
-    return /^\d+$/.test(trimmed);
+    // Camera auto-scans require at least 4 digits to block 1-3 digit stray reflections; manual allows 1+ digits
+    return isManual ? /^\d+$/.test(trimmed) : /^\d{4,}$/.test(trimmed);
   }
-  return true;
+  return isManual ? trimmed.length >= 1 : trimmed.length >= 4;
 }
 
 /* ═══════════════════════════════════════════
@@ -1449,6 +1515,8 @@ function saveBarcodeOnlyList() {
 
 let boScanTimeoutId = null;
 let isBoScanningBusy = false;
+let boPendingCode = null;
+let boPendingCount = 0;
 
 function openBarcodeOnlyMode() {
   closeSettingsModal();
@@ -1509,11 +1577,15 @@ function closeBarcodeOnlyMode() {
 
 function startBoScanningLoop() {
   stopBoScanningLoop();
+  boPendingCode = null;
+  boPendingCount = 0;
 
   const scanTick = async () => {
     if (!isBarcodeOnlyActive) return;
 
     if (isBoScanningPaused || !dom.modalBoManualOverlay.hidden || !dom.modalBoConfirmOverlay.hidden) {
+      boPendingCode = null;
+      boPendingCount = 0;
       boScanTimeoutId = setTimeout(scanTick, 250);
       return;
     }
@@ -1523,11 +1595,30 @@ function startBoScanningLoop() {
       return;
     }
 
+    let nextDelay = 100;
     isBoScanningBusy = true;
     try {
       const detected = await scanner.scanFrame(dom.cameraFeed);
-      if (detected && detected.value && isValidBarcode(detected.value)) {
-        handleBoBarcodeDetected(detected.value.trim());
+      const rawVal = detected && detected.value ? detected.value.trim() : '';
+      if (rawVal && isValidBarcode(rawVal, false)) {
+        if (rawVal === boPendingCode) {
+          boPendingCount += 1;
+        } else {
+          boPendingCode = rawVal;
+          boPendingCount = 1;
+        }
+
+        if (boPendingCount >= 2) {
+          boPendingCode = null;
+          boPendingCount = 0;
+          handleBoBarcodeDetected(rawVal);
+        } else {
+          // Fast verification tick (50ms) when first candidate is seen
+          nextDelay = 50;
+        }
+      } else {
+        boPendingCode = null;
+        boPendingCount = 0;
       }
     } catch (e) {
       console.debug('[BoScan] Frame scan warning:', e);
@@ -1536,7 +1627,7 @@ function startBoScanningLoop() {
     }
 
     if (isBarcodeOnlyActive) {
-      boScanTimeoutId = setTimeout(scanTick, 100);
+      boScanTimeoutId = setTimeout(scanTick, nextDelay);
     }
   };
 
@@ -1549,6 +1640,8 @@ function stopBoScanningLoop() {
     boScanTimeoutId = null;
   }
   isBoScanningBusy = false;
+  boPendingCode = null;
+  boPendingCount = 0;
 }
 
 function handleBoBarcodeDetected(code) {
@@ -1642,7 +1735,7 @@ function renderBarcodeOnlyList() {
         <div class="bo-card-left">
           <span class="bo-card-index">${originalIndex}</span>
           <div class="bo-card-info">
-            <span class="bo-card-code">${escapeHtml(item.barcode)}</span>
+            <span class="bo-card-code" title="Tap to edit barcode">${escapeHtml(item.barcode)} <small class="bo-edit-hint">✎</small></span>
             <span class="bo-card-time">${escapeHtml(timeStr)}</span>
           </div>
         </div>
@@ -1657,6 +1750,33 @@ function handleBoDelete(id) {
   saveBarcodeOnlyList();
   renderBarcodeOnlyList();
   showToast('Barcode removed');
+}
+
+function handleBoEditBarcode(id) {
+  const item = barcodeOnlyList.find(it => it.id === id);
+  if (!item) return;
+  const input = prompt('Edit barcode number:', item.barcode);
+  if (input === null) return;
+  const newCode = input.trim();
+  if (!newCode || newCode === item.barcode) return;
+
+  if (!isValidBarcode(newCode, true)) {
+    showToast('⚠️ Please enter numeric digits (0-9) only', 'error');
+    return;
+  }
+
+  const isDuplicate = barcodeOnlyList.some(it => it.id !== id && it.barcode === newCode);
+  if (isDuplicate) {
+    playErrorTone();
+    triggerHaptic([120, 80, 120]);
+    showToast(`❌ Duplicate Barcode: ${newCode} already in list!`, 'error');
+    return;
+  }
+
+  item.barcode = newCode;
+  saveBarcodeOnlyList();
+  renderBarcodeOnlyList();
+  showToast(`✓ Updated barcode to ${newCode}`, 'success');
 }
 
 function handleBoClearAll() {
@@ -1686,7 +1806,7 @@ function handleBoManualAdd() {
     return;
   }
 
-  if (!isValidBarcode(code)) {
+  if (!isValidBarcode(code, true)) {
     dom.inputBoManual.focus();
     dom.inputBoManual.select();
     dom.inputBoManual.style.borderColor = 'var(--danger)';
