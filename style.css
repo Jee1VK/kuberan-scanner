@@ -61,6 +61,7 @@ body {
   max-width: 480px;
   margin: 0 auto;
   min-height: 100vh;
+  min-height: 100dvh;
   display: flex;
   flex-direction: column;
   position: relative;
@@ -522,25 +523,50 @@ body {
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.6);
-  backdrop-filter: blur(4px);
+  background: rgba(0, 0, 0, 0.68);
+  backdrop-filter: blur(6px);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 200;
-  padding: 20px;
+  padding: calc(16px + var(--safe-top)) calc(16px + env(safe-area-inset-right, 0px)) calc(16px + var(--safe-bottom)) calc(16px + env(safe-area-inset-left, 0px));
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   animation: fadeIn 0.2s ease;
 }
 
 .modal {
   background: var(--surface);
   border-radius: var(--radius);
-  padding: 24px;
+  padding: 22px 20px;
   width: 100%;
-  max-width: 360px;
-  box-shadow: var(--shadow);
+  max-width: 380px;
+  max-height: calc(100vh - 32px);
+  max-height: calc(100dvh - 32px - var(--safe-top) - var(--safe-bottom));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  margin: auto;
+  box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.6), 0 0 0 1px var(--border);
   border: 1px solid var(--border);
   animation: slideUp 0.25s ease;
+}
+
+.modal::-webkit-scrollbar {
+  width: 5px;
+}
+
+.modal::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.modal::-webkit-scrollbar-thumb {
+  background: var(--surface-hover);
+  border-radius: var(--radius-full);
+}
+
+.modal::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
 }
 
 .modal h3 {
@@ -936,28 +962,32 @@ body {
 
 /* ══════════ SETTINGS MODAL ══════════ */
 .modal-wide {
-  max-width: 420px;
+  max-width: 440px;
 }
 
-.modal-header-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 16px;
+.modal-wide .modal-header-row {
+  position: sticky;
+  top: -22px;
+  background: var(--surface);
+  z-index: 10;
+  padding-top: 4px;
+  padding-bottom: 12px;
+  margin-top: -4px;
+  border-bottom: 1px solid var(--border);
 }
 
 .settings-group {
-  margin-bottom: 20px;
+  margin-bottom: 16px;
 }
 
 .settings-label {
   display: block;
-  font-size: 0.8rem;
-  font-weight: 600;
+  font-size: 0.78rem;
+  font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.5px;
   color: var(--text-muted);
-  margin-bottom: 10px;
+  margin-bottom: 8px;
 }
 
 .quality-picker {
@@ -975,7 +1005,7 @@ body {
 }
 
 .quality-card {
-  padding: 10px 12px;
+  padding: 9px 12px;
   background: var(--bg);
   border: 2px solid var(--border);
   border-radius: var(--radius-sm);
@@ -1016,11 +1046,11 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 12px;
+  padding: 9px 12px;
   background: var(--bg);
   border-radius: var(--radius-sm);
   margin-bottom: 6px;
-  font-size: 0.9rem;
+  font-size: 0.88rem;
   cursor: pointer;
 }
 
@@ -1031,12 +1061,16 @@ body {
   cursor: pointer;
 }
 
+.modal-wide .modal-actions {
+  margin-top: 14px;
+}
+
 .settings-version-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-top: 16px;
-  padding-top: 12px;
+  margin-top: 12px;
+  padding-top: 10px;
   border-top: 1px solid var(--border);
   font-size: 0.78rem;
   color: var(--text-muted);
