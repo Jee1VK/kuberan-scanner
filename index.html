@@ -11,7 +11,8 @@
   <link rel="manifest" href="manifest.json">
   <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
-  <link rel="stylesheet" href="style.css?v=1.2.8">
+  <link rel="preload" href="icons/icon.svg" as="image" type="image/svg+xml">
+  <link rel="stylesheet" href="style.css?v=1.2.9">
   <title>Kuberan Scanner</title>
 </head>
 <body>
@@ -19,9 +20,9 @@
 
     <!-- ═══════════ NAME PROMPT MODAL (shown on every app open) ═══════════ -->
     <div id="modal-name-overlay" class="modal-overlay">
-      <div id="modal-name" class="modal" role="dialog" aria-labelledby="name-title">
+      <div id="modal-name" class="modal" role="dialog" aria-modal="true" aria-labelledby="name-title">
         <div class="name-modal-icon">
-          <img src="icons/icon.svg" alt="" width="56" height="56">
+          <img src="icons/icon.svg" alt="Kuberan Scanner Logo" width="56" height="56" fetchpriority="high">
         </div>
         <h3 id="name-title">Welcome to Kuberan Scanner</h3>
         <p class="name-modal-desc">Please enter your <strong>User Name</strong> to begin:</p>
@@ -46,7 +47,7 @@
     <!-- ═══════════ HEADER ═══════════ -->
     <header id="app-header">
       <div class="header-left">
-        <img src="icons/icon.svg" alt="" class="header-logo" width="32" height="32">
+        <img src="icons/icon.svg" alt="Kuberan Scanner Logo" class="header-logo" width="32" height="32">
         <h1>Kuberan Scanner</h1>
       </div>
       <div class="header-right">
@@ -361,7 +362,7 @@
 
     <!-- ═══════════ SETTINGS MODAL ═══════════ -->
     <div id="modal-settings-overlay" class="modal-overlay" hidden>
-      <div id="modal-settings" class="modal modal-wide" role="dialog" aria-labelledby="settings-title">
+      <div id="modal-settings" class="modal modal-wide" role="dialog" aria-modal="true" aria-labelledby="settings-title">
         <div class="modal-header-row">
           <h3 id="settings-title">Scanner Settings</h3>
           <button type="button" id="btn-settings-close" class="btn btn-icon btn-small" aria-label="Close settings">✕</button>
@@ -371,7 +372,7 @@
           <label class="settings-label">Photo Compression Quality</label>
           <div class="quality-picker">
             <label class="quality-option">
-              <input type="radio" name="compression" value="compact">
+              <input type="radio" name="compression" value="compact" aria-label="Compact quality ~60 KB">
               <div class="quality-card">
                 <div class="qc-top">
                   <strong>Compact</strong>
@@ -381,7 +382,7 @@
               </div>
             </label>
             <label class="quality-option">
-              <input type="radio" name="compression" value="balanced" checked>
+              <input type="radio" name="compression" value="balanced" checked aria-label="Balanced quality ~120 KB">
               <div class="quality-card">
                 <div class="qc-top">
                   <strong>Balanced</strong>
@@ -391,7 +392,7 @@
               </div>
             </label>
             <label class="quality-option">
-              <input type="radio" name="compression" value="high">
+              <input type="radio" name="compression" value="high" aria-label="High quality ~250 KB">
               <div class="quality-card">
                 <div class="qc-top">
                   <strong>High</strong>
@@ -410,7 +411,7 @@
               <span>Numeric Only (0-9)</span>
               <small style="display:block; color:var(--text-muted); font-size:0.75rem;">Ignores misread letters and noise (e.g. "F")</small>
             </div>
-            <input type="checkbox" id="setting-numeric-only" checked>
+            <input type="checkbox" id="setting-numeric-only" checked aria-label="Numeric Only (0-9)">
           </label>
         </div>
 
@@ -418,15 +419,15 @@
           <label class="settings-label">Audio &amp; Haptic Alerts</label>
           <label class="setting-toggle-row">
             <span>Barcode Detection Beep</span>
-            <input type="checkbox" id="setting-sound" checked>
+            <input type="checkbox" id="setting-sound" checked aria-label="Barcode Detection Beep">
           </label>
           <label class="setting-toggle-row">
             <span>Camera Shutter Sound</span>
-            <input type="checkbox" id="setting-shutter-sound" checked>
+            <input type="checkbox" id="setting-shutter-sound" checked aria-label="Camera Shutter Sound">
           </label>
           <label class="setting-toggle-row">
             <span>Haptic Vibration</span>
-            <input type="checkbox" id="setting-vibration" checked>
+            <input type="checkbox" id="setting-vibration" checked aria-label="Haptic Vibration">
           </label>
         </div>
 
@@ -452,7 +453,7 @@
           <button type="button" id="btn-save-settings" class="btn btn-primary">Done</button>
         </div>
         <div class="settings-version-row">
-          <span id="app-version-display">Kuberan Scanner <strong>v1.2.8</strong></span>
+          <span id="app-version-display">Kuberan Scanner <strong>v1.2.9</strong></span>
           <button type="button" id="btn-force-update" class="btn-version-update" title="Check for latest version">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <polyline points="23 4 23 10 17 10"/>
@@ -466,7 +467,7 @@
 
     <!-- ═══════════ MANUAL ENTRY MODAL ═══════════ -->
     <div id="modal-overlay" class="modal-overlay" hidden>
-      <div id="modal-manual" class="modal" role="dialog" aria-labelledby="modal-title">
+      <div id="modal-manual" class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title" aria-describedby="modal-desc">
         <h3 id="modal-title">Enter Barcode</h3>
         <p class="text-muted" id="modal-desc">No barcode detected automatically.<br>Please type the product number:</p>
         <input
@@ -476,6 +477,7 @@
           placeholder="e.g. 8901234567890"
           autocomplete="off"
           inputmode="numeric"
+          aria-label="Product barcode number"
           aria-describedby="modal-desc"
         >
         <div class="modal-actions">
@@ -487,9 +489,9 @@
 
     <!-- ═══════════ CONFIRM CLEAR MODAL ═══════════ -->
     <div id="modal-confirm-overlay" class="modal-overlay" hidden>
-      <div id="modal-confirm" class="modal" role="alertdialog" aria-labelledby="confirm-title">
+      <div id="modal-confirm" class="modal" role="alertdialog" aria-modal="true" aria-labelledby="confirm-title" aria-describedby="confirm-desc">
         <h3 id="confirm-title">Clear All Photos?</h3>
-        <p class="text-muted">This will delete all captured photos. This action cannot be undone.</p>
+        <p class="text-muted" id="confirm-desc">This will delete all captured photos. This action cannot be undone.</p>
         <div class="modal-actions">
           <button type="button" id="btn-confirm-clear" class="btn btn-danger">Delete All</button>
           <button type="button" id="btn-confirm-cancel" class="btn btn-secondary">Cancel</button>
@@ -499,9 +501,9 @@
 
     <!-- ═══════════ BARCODE-ONLY MANUAL ENTRY MODAL ═══════════ -->
     <div id="modal-bo-manual-overlay" class="modal-overlay" hidden>
-      <div id="modal-bo-manual" class="modal" role="dialog" aria-labelledby="bo-manual-title">
+      <div id="modal-bo-manual" class="modal" role="dialog" aria-modal="true" aria-labelledby="bo-manual-title" aria-describedby="bo-manual-desc">
         <h3 id="bo-manual-title">Type Barcode</h3>
-        <p class="text-muted">Enter product barcode number to add:</p>
+        <p class="text-muted" id="bo-manual-desc">Enter product barcode number to add:</p>
         <input
           type="text"
           id="input-bo-manual"
@@ -509,6 +511,8 @@
           placeholder="e.g. 8901234567890"
           autocomplete="off"
           inputmode="numeric"
+          aria-label="Product barcode number"
+          aria-describedby="bo-manual-desc"
         >
         <div class="modal-actions">
           <button type="button" id="btn-bo-manual-save" class="btn btn-primary">Add Barcode</button>
@@ -519,9 +523,9 @@
 
     <!-- ═══════════ BARCODE-ONLY CONFIRM CLEAR MODAL ═══════════ -->
     <div id="modal-bo-confirm-overlay" class="modal-overlay" hidden>
-      <div id="modal-bo-confirm" class="modal" role="alertdialog" aria-labelledby="bo-confirm-title">
+      <div id="modal-bo-confirm" class="modal" role="alertdialog" aria-modal="true" aria-labelledby="bo-confirm-title" aria-describedby="bo-confirm-desc">
         <h3 id="bo-confirm-title">Clear Scanned Barcodes?</h3>
-        <p class="text-muted">This will remove all barcodes from this list. This action cannot be undone.</p>
+        <p class="text-muted" id="bo-confirm-desc">This will remove all barcodes from this list. This action cannot be undone.</p>
         <div class="modal-actions">
           <button type="button" id="btn-bo-confirm-clear" class="btn btn-danger">Clear All</button>
           <button type="button" id="btn-bo-confirm-cancel" class="btn btn-secondary">Cancel</button>
@@ -564,11 +568,12 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"
           integrity="sha512-XMVd28F1oH/O71fzwBnV7HucLxVwtxf26XV8P4wPk26EDxuGZ91N8bsOttmnomcCD3CS5ZMRL50H0GgOHvegtg=="
           crossorigin="anonymous"
-          referrerpolicy="no-referrer"></script>
+          referrerpolicy="no-referrer"
+          defer></script>
 
   <!-- App Scripts -->
-  <script src="scanner.js?v=1.2.8"></script>
-  <script src="app.js?v=1.2.8"></script>
+  <script src="scanner.js?v=1.2.9"></script>
+  <script src="app.js?v=1.2.9"></script>
 
   <!-- Service Worker Registration with Auto-Update -->
   <script>
@@ -582,7 +587,7 @@
       });
 
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./sw.js?v=1.2.8', { updateViaCache: 'none' })
+        navigator.serviceWorker.register('./sw.js?v=1.2.9', { updateViaCache: 'none' })
           .then((reg) => {
             console.log('[SW] Registered:', reg.scope);
             reg.update();

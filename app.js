@@ -14,7 +14,7 @@
    Configuration & Quality Presets
    ═══════════════════════════════════════════ */
 const CONFIG = {
-  VERSION: '1.2.8',
+  VERSION: '1.2.9',
   DB_NAME: 'KuberanScannerDB',
   DB_VERSION: 1,
   STORE_NAME: 'photos',
@@ -2081,3 +2081,13 @@ function exportBoXlsx() {
   downloadTextBlob(xmlContent, filename, 'application/vnd.ms-excel;charset=utf-8');
   showToast(`✓ Exported: ${filename}`, 'success');
 }
+
+/* ═══════════════════════════════════════════
+   Page Lifecycle & Memory Cleanup
+   ═══════════════════════════════════════════ */
+window.addEventListener('pagehide', () => {
+  if (scanner) {
+    try { scanner.stop(); } catch (e) { /* ignore */ }
+  }
+  releaseWakeLock();
+});

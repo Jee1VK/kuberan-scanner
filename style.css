@@ -381,6 +381,13 @@ body {
   backdrop-filter: blur(4px);
 }
 
+/* Expand touch target to 44x44px for accessible tapping on mobile */
+.btn-delete::after {
+  content: '';
+  position: absolute;
+  inset: -9px;
+}
+
 .photo-item:hover .btn-delete,
 .photo-item:focus-within .btn-delete {
   opacity: 1;
@@ -437,6 +444,16 @@ body {
 .btn:disabled {
   opacity: 0.4;
   cursor: not-allowed;
+}
+
+/* Accessible focus ring for keyboard navigation */
+.btn:focus-visible,
+.input:focus-visible,
+.zoom-btn:focus-visible,
+.btn-delete:focus-visible,
+.bo-card-delete:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
 }
 
 .btn-primary {
@@ -1408,6 +1425,7 @@ body {
 }
 
 .bo-card-delete {
+  position: relative;
   background: transparent;
   border: none;
   color: var(--text-muted);
@@ -1421,6 +1439,13 @@ body {
   cursor: pointer;
   transition: all var(--transition);
   flex-shrink: 0;
+}
+
+/* Expand touch target to 44x44px for accessible tapping on mobile */
+.bo-card-delete::after {
+  content: '';
+  position: absolute;
+  inset: -6px;
 }
 
 .bo-card-delete:hover {
