@@ -12,7 +12,7 @@
   <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
   <link rel="preload" href="icons/icon.svg" as="image" type="image/svg+xml">
-  <link rel="stylesheet" href="style.css?v=1.3.0">
+  <link rel="stylesheet" href="style.css?v=1.3.1">
   <title>Kuberan Scanner</title>
 </head>
 <body>
@@ -453,7 +453,7 @@
           <button type="button" id="btn-save-settings" class="btn btn-primary">Done</button>
         </div>
         <div class="settings-version-row">
-          <span id="app-version-display">Kuberan Scanner <strong>v1.3.0</strong></span>
+          <span id="app-version-display">Kuberan Scanner <strong>v1.3.1</strong></span>
           <button type="button" id="btn-force-update" class="btn-version-update" title="Check for latest version">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <polyline points="23 4 23 10 17 10"/>
@@ -572,8 +572,8 @@
           defer></script>
 
   <!-- App Scripts -->
-  <script src="scanner.js?v=1.3.0"></script>
-  <script src="app.js?v=1.3.0"></script>
+  <script src="scanner.js?v=1.3.1"></script>
+  <script src="app.js?v=1.3.1"></script>
 
   <!-- Service Worker Registration with Auto-Update -->
   <script>
@@ -587,7 +587,7 @@
       });
 
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./sw.js?v=1.3.0', { updateViaCache: 'none' })
+        navigator.serviceWorker.register('./sw.js?v=1.3.1', { updateViaCache: 'none' })
           .then((reg) => {
             console.log('[SW] Registered:', reg.scope);
             reg.update();
