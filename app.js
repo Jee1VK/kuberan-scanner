@@ -14,7 +14,7 @@
    Configuration & Quality Presets
    ═══════════════════════════════════════════ */
 const CONFIG = {
-  VERSION: '1.2.6',
+  VERSION: '1.2.7',
   DB_NAME: 'KuberanScannerDB',
   DB_VERSION: 1,
   STORE_NAME: 'photos',
@@ -333,17 +333,29 @@ function triggerShutterFlash() {
    ═══════════════════════════════════════════ */
 document.addEventListener('DOMContentLoaded', async () => {
   // Check if app was recently updated
-  const storedVersion = localStorage.getItem('kuberan_app_version');
-  if (storedVersion && storedVersion !== CONFIG.VERSION) {
-    showToast(`App updated to v${CONFIG.VERSION}!`, 'success');
-  }
-  localStorage.setItem('kuberan_app_version', CONFIG.VERSION);
+  try {
+    const storedVersion = localStorage.getItem('kuberan_app_version');
+    if (storedVersion && storedVersion !== CONFIG.VERSION) {
+      showToast(`App updated to v${CONFIG.VERSION}!`, 'success');
+    }
+    localStorage.setItem('kuberan_app_version', CONFIG.VERSION);
+  } catch (e) { /* storage unavailable */ }
 
   loadSettings();
   applySettingsToUI();
 
-  db = await openDB();
-  photos = await loadPhotos();
+  // Bind UI first so the app stays usable even if storage fails to open
+  bindEvents();
+  handleInstallPrompt();
+
+  try {
+    db = await openDB();
+    photos = await loadPhotos();
+  } catch (err) {
+    console.warn('[App] Photo storage unavailable, continuing in memory-only mode:', err);
+    db = null;
+    photos = [];
+  }
   renderGallery();
   updateStats();
 
@@ -351,15 +363,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Show name prompt on EVERY app open
   showNamePrompt();
-
-  bindEvents();
-  handleInstallPrompt();
 });
 
 /* ── Name Prompt (shown every time) ── */
 function showNamePrompt() {
   // Pre-fill with last-used name for convenience
-  const lastUsed = localStorage.getItem('kuberan_last_name') || '';
+  let lastUsed = '';
+  try { lastUsed = localStorage.getItem('kuberan_last_name') || ''; } catch (e) { /* ignore */ }
   dom.inputUserName.value = lastUsed;
   dom.nameOverlay.hidden = false;
   setTimeout(() => {
@@ -378,13 +388,13 @@ function handleNameSubmit() {
   }
 
   userName = name;
-  localStorage.setItem('kuberan_last_name', name);
+  try { localStorage.setItem('kuberan_last_name', name); } catch (e) { /* storage full / private mode */ }
   dom.nameOverlay.hidden = true;
   dom.userGreeting.textContent = name;
   dom.userGreeting.hidden = false;
 
-  // Initialize camera after name is confirmed
-  initCamera();
+  // Initialize camera after name is confirmed (only once — later name re-submits don't restart it)
+  if (!scanner) initCamera();
 }
 
 /* ── Screen Wake Lock (prevents phone screen from dimming/locking while scanning) ── */
@@ -404,14 +414,43 @@ async function requestWakeLock() {
   }
 }
 
-document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && scanner) {
-    requestWakeLock();
+document.addEventListener('visibilitychange', async () => {
+  if (document.visibilityState !== 'visible' || !scanner) return;
+  requestWakeLock();
+
+  // Mobile OSes may kill the camera track while the app is in the background.
+  // Silently restart the same scanner (without resetting the user's current step/mode).
+  const track = scanner.stream && scanner.stream.getVideoTracks()[0];
+  const trackDead = !scanner.stream || !track || track.readyState === 'ended';
+  if (trackDead && !isInitializingCamera && dom.cameraError.hidden) {
+    isInitializingCamera = true;
+    try {
+      await scanner.init();
+      resetCameraControlsUI();
+    } catch (err) {
+      console.warn('[App] Camera resume failed:', err);
+      dom.cameraError.hidden = false;
+      dom.cameraFeed.hidden = true;
+      dom.cameraErrorMsg.textContent = err.message || 'Camera not available';
+    } finally {
+      isInitializingCamera = false;
+    }
   }
 });
 
+/** Reset zoom pills and flash buttons to match a freshly (re)started camera stream (zoom 1x, torch off). */
+function resetCameraControlsUI() {
+  dom.zoomButtons.forEach(b => b.classList.toggle('active', parseFloat(b.dataset.zoom) === 1));
+  dom.btnFlash.classList.remove('active');
+  if (dom.btnBoFlash) dom.btnBoFlash.classList.remove('active');
+}
+
 /* ── Camera initialization ── */
+let isInitializingCamera = false;
+
 async function initCamera() {
+  if (isInitializingCamera) return; // Prevent concurrent inits (double taps) leaking camera streams
+  isInitializingCamera = true;
   try {
     if (scanner) {
       try {
@@ -424,6 +463,7 @@ async function initCamera() {
     scanner = new BarcodeScanner(dom.cameraFeed, dom.scanCanvas);
     await scanner.init();
     requestWakeLock();
+    resetCameraControlsUI();
 
     if (!scanner.hasNativeScanning()) {
       dom.scanHint.textContent = 'Manual barcode entry mode';
@@ -438,13 +478,18 @@ async function initCamera() {
     dom.cameraError.hidden = true;
     dom.cameraFeed.hidden = false;
 
-    // Start in Step 1 (Photo)
-    setStep(STEP.PHOTO);
+    // Start in Step 1 (Photo) — unless the user is in Barcode-Only mode
+    if (!isBarcodeOnlyActive) {
+      pendingPhotoBlob = null;
+      setStep(STEP.PHOTO);
+    }
   } catch (err) {
     console.error('[App] Camera init failed:', err);
     dom.cameraError.hidden = false;
     dom.cameraFeed.hidden = true;
     dom.cameraErrorMsg.textContent = err.message || 'Camera not available';
+  } finally {
+    isInitializingCamera = false;
   }
 }
 
@@ -502,14 +547,16 @@ function setStep(step) {
    Event Binding
    ═══════════════════════════════════════════ */
 function bindEvents() {
-  // Name prompt (form submit supports virtual keyboard 'Go/Done' key)
+  // Name prompt (form submit handles both the button tap and the virtual keyboard 'Go/Done' key).
+  // NOTE: The button is type="submit", so a separate click listener would fire handleNameSubmit twice.
   if (dom.formUserName) {
     dom.formUserName.addEventListener('submit', (e) => {
       e.preventDefault();
       handleNameSubmit();
     });
+  } else {
+    dom.btnNameSubmit.addEventListener('click', handleNameSubmit);
   }
-  dom.btnNameSubmit.addEventListener('click', handleNameSubmit);
 
   // Main action button (Step 1: Snap Photo, Step 2: opens manual entry)
   dom.btnAction.addEventListener('click', handleActionButton);
@@ -540,13 +587,13 @@ function bindEvents() {
     }
   });
 
-  // Camera switch
+  // Camera switch (shared by Photo mode and Barcode-Only mode — single handler only)
   dom.btnSwitchCamera.addEventListener('click', async () => {
-    if (!scanner) return;
+    if (!scanner || dom.btnSwitchCamera.disabled) return;
     dom.btnSwitchCamera.disabled = true;
     try {
       await scanner.switchCamera();
-      dom.btnFlash.classList.remove('active');
+      resetCameraControlsUI();
       showToast('Camera switched');
     } catch (e) {
       showToast('Failed to switch camera', 'error');
@@ -555,14 +602,14 @@ function bindEvents() {
     }
   });
 
-  // Zoom
+  // Zoom (shared by Photo mode and Barcode-Only mode — single handler only)
   dom.zoomButtons.forEach((btn) => {
-    btn.addEventListener('click', async (e) => {
-      const zoomVal = parseFloat(e.target.dataset.zoom) || 1.0;
+    btn.addEventListener('click', async () => {
+      const zoomVal = parseFloat(btn.dataset.zoom) || 1.0;
       if (scanner) {
         await scanner.setZoom(zoomVal);
         dom.zoomButtons.forEach(b => b.classList.remove('active'));
-        e.target.classList.add('active');
+        btn.classList.add('active');
       }
     });
   });
@@ -637,7 +684,7 @@ function bindEvents() {
   });
   dom.modalOverlay.addEventListener('click', (e) => {
     if (e.target === dom.modalOverlay) {
-      closeModal();
+      dismissManualModal();
     }
   });
 
@@ -674,26 +721,14 @@ function bindEvents() {
     });
   }
 
-  // Barcode-Only Controls (Pause, Flash, Switch, Zoom)
+  // Barcode-Only Controls (Pause, Flash). Zoom & camera-switch buttons are shared with
+  // Photo mode and already bound above — binding them again would fire every action twice.
   if (dom.btnBoPause) {
     dom.btnBoPause.addEventListener('click', toggleBoScanningPause);
   }
   if (dom.btnBoFlash) {
     dom.btnBoFlash.addEventListener('click', handleBoFlashToggle);
   }
-  if (dom.btnBoSwitchCamera) {
-    dom.btnBoSwitchCamera.addEventListener('click', handleBoSwitchCamera);
-  }
-  dom.boZoomButtons.forEach((btn) => {
-    btn.addEventListener('click', async (e) => {
-      const zoomVal = parseFloat(e.target.dataset.zoom) || 1.0;
-      if (scanner) {
-        await scanner.setZoom(zoomVal);
-        dom.boZoomButtons.forEach(b => b.classList.remove('active'));
-        e.target.classList.add('active');
-      }
-    });
-  });
 
   // Barcode-Only Search
   if (dom.boSearch) {
@@ -760,7 +795,7 @@ function bindEvents() {
     if (e.key === 'Escape') {
       closeLightbox();
       closeSettingsModal();
-      closeModal();
+      dismissManualModal();
       dom.confirmOverlay.hidden = true;
       if (isBarcodeOnlyActive) {
         closeBoManualModal();
@@ -834,27 +869,44 @@ async function handleActionButton() {
   }
 }
 
-function handleRetakeCurrentStep() {
+/* Incremented whenever a Step-2 scan is cancelled/restarted, so stale scan results are ignored */
+let barcodeScanSession = 0;
+
+/** Stop any running Step-2 barcode scan and invalidate its pending result. */
+function cancelBarcodeScanning() {
+  barcodeScanSession++;
   if (scanner) scanner.stopContinuousScan();
+  dom.scanFrame.classList.remove('scanning', 'success', 'error');
+  dom.scanStatus.hidden = true;
+}
+
+function handleRetakeCurrentStep() {
+  cancelBarcodeScanning();
+  closeModal();
   pendingPhotoBlob = null;
   setStep(STEP.PHOTO);
   showToast('Photo discarded. Ready to take new photo.');
 }
 
 async function startBarcodeScanning() {
+  const session = ++barcodeScanSession;
+
   if (!scanner || !scanner.hasNativeScanning()) {
     // No native scanning — skip to manual entry after brief pause
     dom.scanFrame.classList.add('scanning');
     dom.scanStatus.hidden = false;
     setTimeout(() => {
+      if (session !== barcodeScanSession) return;
       dom.scanFrame.classList.remove('scanning');
       dom.scanStatus.hidden = true;
+      if (currentStep !== STEP.BARCODE || !pendingPhotoBlob) return;
       dom.btnActionText.textContent = 'Enter Barcode';
       openManualEntryModal();
     }, 1500);
     return;
   }
 
+  dom.scanFrame.classList.remove('error', 'success');
   dom.scanFrame.classList.add('scanning');
   dom.scanStatus.hidden = false;
 
@@ -865,13 +917,17 @@ async function startBarcodeScanning() {
     (val) => isValidBarcode(val)
   );
 
+  // Ignore results from a scan that was cancelled (retake, manual entry, mode switch, newer scan)
+  if (session !== barcodeScanSession) return;
+
   dom.scanFrame.classList.remove('scanning', 'success');
   dom.scanStatus.hidden = true;
 
+  if (currentStep !== STEP.BARCODE || isBarcodeOnlyActive) return;
+
   if (barcode && pendingPhotoBlob) {
     // Check for duplicate barcode — strictly block and alert
-    const isDuplicate = photos.some(p => p.barcode === barcode.value);
-    if (isDuplicate) {
+    if (isDuplicatePhotoBarcode(barcode.value)) {
       dom.scanFrame.classList.add('error');
       playErrorTone();
       triggerHaptic([120, 80, 120]);
@@ -879,8 +935,9 @@ async function startBarcodeScanning() {
 
       // Keep photo intact, resume scanning for correct barcode after a moment
       setTimeout(() => {
+        if (session !== barcodeScanSession) return;
         dom.scanFrame.classList.remove('error');
-        if (currentStep === STEP.BARCODE && pendingPhotoBlob) {
+        if (currentStep === STEP.BARCODE && pendingPhotoBlob && dom.modalOverlay.hidden) {
           startBarcodeScanning();
         }
       }, 1600);
@@ -888,13 +945,14 @@ async function startBarcodeScanning() {
     }
 
     // Success: unique barcode detected!
+    const blob = pendingPhotoBlob;
+    pendingPhotoBlob = null;
     dom.scanFrame.classList.add('success');
     playBarcodeBeep();
     triggerHaptic([60, 40, 60]);
 
-    await savePhoto(barcode.value, pendingPhotoBlob);
-    pendingPhotoBlob = null;
-    showToast(`✓ Saved: ${barcode.value} (${formatSize(photos[photos.length - 1].size)})`, 'success');
+    await savePhoto(barcode.value, blob);
+    showToast(`✓ Saved: ${barcode.value} (${formatSize(blob.size)})`, 'success');
 
     // Return to Step 1 for next product
     setStep(STEP.PHOTO);
@@ -909,6 +967,8 @@ async function startBarcodeScanning() {
    Manual Entry Modal
    ═══════════════════════════════════════════ */
 function openManualEntryModal() {
+  // Pause auto-scan while typing so a late camera detection can't save the photo behind the modal
+  cancelBarcodeScanning();
   dom.manualBarcode.value = '';
   dom.modalOverlay.hidden = false;
   setTimeout(() => dom.manualBarcode.focus(), 100);
@@ -917,6 +977,15 @@ function openManualEntryModal() {
 function closeModal() {
   dom.modalOverlay.hidden = true;
   dom.manualBarcode.value = '';
+}
+
+/** Dismiss the manual modal without saving; resume auto-scanning if a photo is still waiting. */
+function dismissManualModal() {
+  if (dom.modalOverlay.hidden) return;
+  closeModal();
+  if (currentStep === STEP.BARCODE && pendingPhotoBlob && !isBarcodeOnlyActive) {
+    startBarcodeScanning();
+  }
 }
 
 async function handleModalSave() {
@@ -944,8 +1013,7 @@ async function handleModalSave() {
   }
 
   // Check for duplicate barcode — strictly block and alert
-  const isDuplicate = photos.some(p => p.barcode === barcode);
-  if (isDuplicate) {
+  if (isDuplicatePhotoBarcode(barcode)) {
     playErrorTone();
     triggerHaptic([120, 80, 120]);
     dom.manualBarcode.style.borderColor = 'var(--danger)';
@@ -988,6 +1056,7 @@ async function savePhoto(barcode, blob) {
 }
 
 async function deletePhoto(id) {
+  if (activeLightboxPhoto && activeLightboxPhoto.id === id) closeLightbox();
   const photo = photos.find(p => p.id === id);
   if (photo && photo._blobUrl) URL.revokeObjectURL(photo._blobUrl);
   photos = photos.filter(p => p.id !== id);
@@ -998,6 +1067,7 @@ async function deletePhoto(id) {
 }
 
 async function clearAllPhotos() {
+  closeLightbox();
   photos.forEach(p => { if (p._blobUrl) URL.revokeObjectURL(p._blobUrl); });
   photos = [];
   await clearAllPersistedPhotos();
@@ -1078,8 +1148,7 @@ async function handleLightboxEditBarcode() {
     return;
   }
 
-  const isDuplicate = photos.some(p => p.id !== activeLightboxPhoto.id && p.barcode === newCode);
-  if (isDuplicate) {
+  if (isDuplicatePhotoBarcode(newCode, activeLightboxPhoto.id)) {
     playErrorTone();
     triggerHaptic([120, 80, 120]);
     showToast(`❌ Barcode ${newCode} already exists!`, 'error');
@@ -1224,12 +1293,13 @@ async function handleForceUpdate() {
    ═══════════════════════════════════════════ */
 async function handleFlashToggle() {
   if (!scanner) return;
-  const result = await scanner.toggleTorch();
-  if (result === false && !scanner.stream) {
-    showToast('Flash not available on this device', 'error');
+  if (!scanner.hasTorch()) {
+    showToast('Flash not available on this camera', 'error');
     return;
   }
-  dom.btnFlash.classList.toggle('active', result);
+  const result = await scanner.toggleTorch();
+  dom.btnFlash.classList.toggle('active', !!result);
+  if (dom.btnBoFlash) dom.btnBoFlash.classList.toggle('active', !!result);
 }
 
 /* ═══════════════════════════════════════════
@@ -1494,6 +1564,28 @@ function isValidBarcode(code, isManual = false) {
   return isManual ? trimmed.length >= 1 : trimmed.length >= 4;
 }
 
+/**
+ * Checks if a barcode already exists in the captured photos collection.
+ * @param {string} barcode
+ * @param {string|null} excludeId Optional photo ID to exclude (e.g. when editing in lightbox)
+ * @returns {boolean}
+ */
+function isDuplicatePhotoBarcode(barcode, excludeId = null) {
+  if (!barcode) return false;
+  return photos.some(p => p.barcode === barcode && (!excludeId || p.id !== excludeId));
+}
+
+/**
+ * Checks if a barcode already exists in the Barcode-Only list.
+ * @param {string} code
+ * @param {string|null} excludeId Optional item ID to exclude (e.g. when editing item)
+ * @returns {boolean}
+ */
+function isDuplicateBoBarcode(code, excludeId = null) {
+  if (!code) return false;
+  return barcodeOnlyList.some(item => item.barcode === code && (!excludeId || item.id !== excludeId));
+}
+
 /* ═══════════════════════════════════════════
    Barcode-Only Rapid Scanner Segment
    ═══════════════════════════════════════════ */
@@ -1501,7 +1593,12 @@ function isValidBarcode(code, isManual = false) {
 function loadBarcodeOnlyList() {
   try {
     const saved = localStorage.getItem('kuberan_barcode_only_list');
-    if (saved) barcodeOnlyList = JSON.parse(saved);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      barcodeOnlyList = Array.isArray(parsed) ? parsed : [];
+    } else {
+      barcodeOnlyList = [];
+    }
   } catch (e) {
     barcodeOnlyList = [];
   }
@@ -1520,6 +1617,7 @@ let boPendingCount = 0;
 
 function openBarcodeOnlyMode() {
   closeSettingsModal();
+  cancelBarcodeScanning();
   isBarcodeOnlyActive = true;
   isBoScanningPaused = false;
   lastBoScanCode = null;
@@ -1542,7 +1640,8 @@ function openBarcodeOnlyMode() {
   dom.cameraSection.hidden = false;
   dom.cameraFeed.hidden = false;
   dom.scanOverlay.hidden = false;
-  dom.scanFrame.className = 'scanning';
+  dom.scanFrame.classList.remove('error', 'success');
+  dom.scanFrame.classList.add('scanning');
   dom.scanHint.textContent = 'Align barcode inside frame to scan';
 
   // 4. Update controls and render list
@@ -1656,7 +1755,7 @@ function handleBoBarcodeDetected(code) {
   lastBoScanTime = Date.now();
 
   // Duplicate Check
-  const isDuplicate = barcodeOnlyList.some(item => item.barcode === code);
+  const isDuplicate = isDuplicateBoBarcode(code);
 
   if (isDuplicate) {
     // ❌ Duplicate Barcode: Warning Tone, Vibration, Red Flash, Warning Toast
@@ -1765,8 +1864,7 @@ function handleBoEditBarcode(id) {
     return;
   }
 
-  const isDuplicate = barcodeOnlyList.some(it => it.id !== id && it.barcode === newCode);
-  if (isDuplicate) {
+  if (isDuplicateBoBarcode(newCode, id)) {
     playErrorTone();
     triggerHaptic([120, 80, 120]);
     showToast(`❌ Duplicate Barcode: ${newCode} already in list!`, 'error');
@@ -1815,8 +1913,7 @@ function handleBoManualAdd() {
     return;
   }
 
-  const isDuplicate = barcodeOnlyList.some(item => item.barcode === code);
-  if (isDuplicate) {
+  if (isDuplicateBoBarcode(code)) {
     playErrorTone();
     triggerHaptic([120, 80, 120]);
     dom.inputBoManual.style.borderColor = 'var(--danger)';
@@ -1867,25 +1964,13 @@ function updateBoPauseIcon() {
 
 async function handleBoFlashToggle() {
   if (!scanner) return;
+  if (!scanner.hasTorch()) {
+    showToast('Flash not available on this camera', 'error');
+    return;
+  }
   const result = await scanner.toggleTorch();
   dom.btnBoFlash.classList.toggle('active', !!result);
-}
-
-async function handleBoSwitchCamera() {
-  if (!scanner) return;
-  dom.btnBoSwitchCamera.disabled = true;
-  try {
-    await scanner.switchCamera();
-    if (scanner.stream) {
-      dom.boCameraFeed.srcObject = scanner.stream;
-      dom.boCameraFeed.play().catch(() => {});
-    }
-    showToast('Camera switched');
-  } catch (e) {
-    showToast('Failed to switch camera', 'error');
-  } finally {
-    dom.btnBoSwitchCamera.disabled = false;
-  }
+  dom.btnFlash.classList.toggle('active', !!result);
 }
 
 /* ── Barcode-Only Export Functions ── */

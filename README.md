@@ -36,6 +36,10 @@ The app uses a guided 2-step capture loop for every product:
 - **🔎 Live Gallery Search** — Instant filter by barcode number or filename.
 - **🔍 Camera Zoom & Lens Switching** — 1x/2x zoom and multi-lens toggle for wide/standard cameras.
 - **🚫 Strict Duplicate Barcode Protection** — Scanning an already photographed barcode is strictly blocked with a red visual flash, buzzer alarm, and warning toast so every barcode is 100% unique.
+- **⚡ Barcode-Only Rapid Scan Mode** — High-speed batch inventory scanning without taking photos. Instant export to `.txt`, `.csv`, and Microsoft Excel `.xls` formats.
+- **🎯 2-Frame Consensus & Numeric Filter** — Eliminates sensor/OCR noise, glare artifacts, and hallucinated letters (like "F") by requiring 2 consecutive matching frames and enforcing customizable numeric filtering.
+- **✏️ In-Place Barcode Editing** — Tap any barcode in the lightbox or barcode-only list to quickly edit or fix numbers without retaking photos.
+- **💡 Screen Wake Lock & Continuous AF** — Keeps phone screens active while scanning and applies hardware continuous autofocus for rapid tag focus.
 - **💾 Offline PWA** — Works offline in warehouse environments and can be installed directly to home screens.
 
 ---

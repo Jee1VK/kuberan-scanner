@@ -16,6 +16,10 @@ class BarcodeScanner {
     this.stream = null;
     this._ready = false;
     this._scanInterval = null;
+    this._scanTimeout = null;
+    this._pendingScanResolve = null;
+    this._switching = false;
+    this._torchOn = false;
 
     // Zoom & Camera states
     this.zoomLevel = 1.0;
@@ -383,30 +387,37 @@ class BarcodeScanner {
       this._captureCanvas.height = 0;
     }
     this.zoomLevel = 1.0;
+    this._torchOn = false;
     this._ready = false;
   }
 
   /**
    * Switch to next available camera (e.g. ultra-wide or back/front).
+   * Guarded against concurrent calls (double taps) to prevent leaked camera streams.
    * @returns {Promise<boolean>}
    */
   async switchCamera() {
-    if (this.availableCameras.length <= 1) return false;
-    this.currentCameraIndex = (this.currentCameraIndex + 1) % this.availableCameras.length;
-    const nextDevice = this.availableCameras[this.currentCameraIndex];
-    this.stop();
+    if (this._switching || this.availableCameras.length <= 1) return false;
+    this._switching = true;
     try {
-      await this.init(nextDevice.deviceId);
-    } catch (err) {
-      console.warn('[Scanner] Switch camera failed, falling back to default:', err);
-      // Attempt recovery with default camera
-      await this.init(null);
+      this.currentCameraIndex = (this.currentCameraIndex + 1) % this.availableCameras.length;
+      const nextDevice = this.availableCameras[this.currentCameraIndex];
+      this.stop();
+      try {
+        await this.init(nextDevice.deviceId);
+      } catch (err) {
+        console.warn('[Scanner] Switch camera failed, falling back to default:', err);
+        // Attempt recovery with default camera
+        await this.init(null);
+      }
+      if (this.activeVideo && this.activeVideo !== this.video && this.stream) {
+        this.activeVideo.srcObject = this.stream;
+        this.activeVideo.play().catch(() => {});
+      }
+      return true;
+    } finally {
+      this._switching = false;
     }
-    if (this.activeVideo && this.activeVideo !== this.video && this.stream) {
-      this.activeVideo.srcObject = this.stream;
-      this.activeVideo.play().catch(() => {});
-    }
-    return true;
   }
 
   /**
@@ -521,7 +532,7 @@ class BarcodeScanner {
    * @returns {Promise<{value: string, format: string}|null>}
    */
   scanUntilFound(onDetected, intervalMs = 150, timeoutMs = 5000, validator = null) {
-    // Prevent orphaned intervals from previous calls
+    // Cancel (and settle with null) any previous scan session
     this.stopContinuousScan();
 
     return new Promise((resolve) => {
@@ -530,8 +541,22 @@ class BarcodeScanner {
       let lastCandidate = null;
       let candidateCount = 0;
 
+      const finish = (value) => {
+        if (cancelled) return;
+        cancelled = true;
+        if (this._scanTimeout) {
+          clearTimeout(this._scanTimeout);
+          this._scanTimeout = null;
+        }
+        if (this._pendingScanResolve === finish) this._pendingScanResolve = null;
+        resolve(value);
+      };
+      // Exposed so stopContinuousScan() can cancel even while a frame detection is in flight
+      this._pendingScanResolve = finish;
+
       const scanTick = async () => {
         if (cancelled) return;
+        this._scanTimeout = null;
 
         let nextDelay = intervalMs;
 
@@ -549,11 +574,9 @@ class BarcodeScanner {
             }
 
             if (candidateCount >= 2) {
-              cancelled = true;
-              this._scanTimeout = null;
               const finalResult = { value: trimmedVal, format: result.format };
               if (onDetected) onDetected(finalResult);
-              resolve(finalResult);
+              finish(finalResult);
               return;
             }
 
@@ -567,23 +590,24 @@ class BarcodeScanner {
           // Scan frame error — continue trying
         }
 
+        if (cancelled) return;
+
         elapsed += nextDelay;
         if (timeoutMs > 0 && elapsed >= timeoutMs) {
-          cancelled = true;
-          this._scanTimeout = null;
-          resolve(null);
+          finish(null);
           return;
         }
 
-        if (!cancelled) {
-          this._scanTimeout = setTimeout(scanTick, nextDelay);
-        }
+        this._scanTimeout = setTimeout(scanTick, nextDelay);
       };
 
       this._scanTimeout = setTimeout(scanTick, intervalMs);
     });
   }
 
+  /**
+   * Stop any running continuous scan. A pending scanUntilFound() promise resolves with null.
+   */
   stopContinuousScan() {
     if (this._scanInterval) {
       clearInterval(this._scanInterval);
@@ -592,6 +616,11 @@ class BarcodeScanner {
     if (this._scanTimeout) {
       clearTimeout(this._scanTimeout);
       this._scanTimeout = null;
+    }
+    if (this._pendingScanResolve) {
+      const finish = this._pendingScanResolve;
+      this._pendingScanResolve = null;
+      finish(null);
     }
   }
 
@@ -652,26 +681,43 @@ class BarcodeScanner {
 
   /* ──────────── Torch / Flash ──────────── */
 
-  async toggleTorch() {
+  /**
+   * Whether the active camera track supports a torch (flashlight).
+   * @returns {boolean}
+   */
+  hasTorch() {
     if (!this.stream) return false;
-
     const track = this.stream.getVideoTracks()[0];
-    if (!track) return false;
+    if (!track || typeof track.getCapabilities !== 'function') return false;
+    try {
+      return !!track.getCapabilities().torch;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  /**
+   * Toggle torch. Returns the new torch state (true = on, false = off/unsupported).
+   * @returns {Promise<boolean>}
+   */
+  async toggleTorch() {
+    if (!this.hasTorch()) return false;
+    const track = this.stream.getVideoTracks()[0];
 
     try {
-      const capabilities = track.getCapabilities();
-      if (!capabilities.torch) return false;
-
-      const settings = track.getSettings();
-      const newState = !settings.torch;
+      // Some devices don't report torch in getSettings(), so track our own state as fallback
+      const settings = typeof track.getSettings === 'function' ? track.getSettings() : {};
+      const current = typeof settings.torch === 'boolean' ? settings.torch : this._torchOn;
+      const newState = !current;
 
       await track.applyConstraints({
         advanced: [{ torch: newState }]
       });
+      this._torchOn = newState;
       return newState;
     } catch (err) {
       console.warn('[Scanner] Torch toggle failed:', err);
-      return false;
+      return this._torchOn;
     }
   }
 
