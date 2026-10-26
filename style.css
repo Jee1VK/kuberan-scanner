@@ -817,7 +817,8 @@ body {
   pointer-events: none;
 }
 
-#gallery-search {
+#gallery-search,
+#bo-search {
   width: 100%;
   padding: 8px 12px 8px 36px;
   background: var(--surface);
@@ -829,7 +830,8 @@ body {
   transition: border-color var(--transition);
 }
 
-#gallery-search:focus {
+#gallery-search:focus,
+#bo-search:focus {
   border-color: var(--primary);
 }
 

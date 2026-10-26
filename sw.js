@@ -3,7 +3,7 @@
  * Cache-first strategy for app shell, network-first for external resources
  */
 
-const CACHE_NAME = 'kuberan-scanner-v21';
+const CACHE_NAME = 'kuberan-scanner-v22';
 
 /** App shell files to pre-cache */
 const APP_SHELL = [
@@ -25,7 +25,7 @@ const EXTERNAL_RESOURCES = [
 
 /* ── Install: Pre-cache app shell and dependencies (bypassing browser HTTP cache) ── */
 self.addEventListener('install', (event) => {
-  console.log('[SW] Installing v21…');
+  console.log('[SW] Installing v22…');
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then(async (cache) => {
@@ -45,7 +45,7 @@ self.addEventListener('install', (event) => {
 
 /* ── Activate: Clean up old caches immediately ── */
 self.addEventListener('activate', (event) => {
-  console.log('[SW] Activating v21…');
+  console.log('[SW] Activating v22…');
   event.waitUntil(
     caches.keys()
       .then((keys) => {
@@ -92,6 +92,7 @@ self.addEventListener('fetch', (event) => {
  * Falls back to cache if offline.
  */
 async function networkFirst(request) {
+  let timeoutId = null;
   try {
     const networkPromise = fetch(request, { cache: 'no-cache' }).then(async (response) => {
       if (response && response.ok) {
@@ -101,9 +102,9 @@ async function networkFirst(request) {
       return response;
     });
 
-    const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('Network timeout')), 2500)
-    );
+    const timeoutPromise = new Promise((_, reject) => {
+      timeoutId = setTimeout(() => reject(new Error('Network timeout')), 2500);
+    });
 
     return await Promise.race([networkPromise, timeoutPromise]);
   } catch (err) {
@@ -118,6 +119,8 @@ async function networkFirst(request) {
       status: 503,
       headers: { 'Content-Type': 'text/plain' }
     });
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
   }
 }
 

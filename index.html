@@ -11,7 +11,7 @@
   <link rel="manifest" href="manifest.json">
   <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
-  <link rel="stylesheet" href="style.css?v=1.2.7">
+  <link rel="stylesheet" href="style.css?v=1.2.8">
   <title>Kuberan Scanner</title>
 </head>
 <body>
@@ -113,7 +113,7 @@
         </div>
 
         <!-- Scan overlay with corner brackets -->
-        <div id="scan-overlay">
+        <div id="scan-overlay" hidden>
           <div id="scan-frame">
             <span class="corner tl"></span>
             <span class="corner tr"></span>
@@ -164,7 +164,7 @@
           </svg>
           <span id="btn-action-text">Snap Photo</span>
         </button>
-        <button type="button" id="btn-manual-entry" class="btn btn-icon" title="Enter barcode manually" aria-label="Enter barcode manually">
+        <button type="button" id="btn-manual-entry" class="btn btn-icon" title="Enter barcode manually" aria-label="Enter barcode manually" hidden>
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="4 7 4 4 20 4 20 7"/>
             <line x1="9" y1="20" x2="15" y2="20"/>
@@ -452,7 +452,7 @@
           <button type="button" id="btn-save-settings" class="btn btn-primary">Done</button>
         </div>
         <div class="settings-version-row">
-          <span id="app-version-display">Kuberan Scanner <strong>v1.2.7</strong></span>
+          <span id="app-version-display">Kuberan Scanner <strong>v1.2.8</strong></span>
           <button type="button" id="btn-force-update" class="btn-version-update" title="Check for latest version">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <polyline points="23 4 23 10 17 10"/>
@@ -567,8 +567,8 @@
           referrerpolicy="no-referrer"></script>
 
   <!-- App Scripts -->
-  <script src="scanner.js?v=1.2.7"></script>
-  <script src="app.js?v=1.2.7"></script>
+  <script src="scanner.js?v=1.2.8"></script>
+  <script src="app.js?v=1.2.8"></script>
 
   <!-- Service Worker Registration with Auto-Update -->
   <script>
@@ -582,7 +582,7 @@
       });
 
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./sw.js?v=1.2.7', { updateViaCache: 'none' })
+        navigator.serviceWorker.register('./sw.js?v=1.2.8', { updateViaCache: 'none' })
           .then((reg) => {
             console.log('[SW] Registered:', reg.scope);
             reg.update();

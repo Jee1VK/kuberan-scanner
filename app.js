@@ -14,7 +14,7 @@
    Configuration & Quality Presets
    ═══════════════════════════════════════════ */
 const CONFIG = {
-  VERSION: '1.2.7',
+  VERSION: '1.2.8',
   DB_NAME: 'KuberanScannerDB',
   DB_VERSION: 1,
   STORE_NAME: 'photos',
@@ -84,7 +84,6 @@ let audioCtx = null;
 let barcodeOnlyList = [];
 let isBarcodeOnlyActive = false;
 let isBoScanningPaused = false;
-let boScanInterval = null;
 let lastBoScanCode = null;
 let lastBoScanTime = 0;
 let boSearchQuery = '';
@@ -206,14 +205,6 @@ const dom = {
   btnBoBack:            $('#btn-bo-back'),
   boStatsBadge:         $('#bo-stats-badge'),
   boCount:              $('#bo-count'),
-  boCameraContainer:    $('#camera-container'),
-  boCameraFeed:         $('#camera-feed'),
-  boScanCanvas:         $('#scan-canvas'),
-  boScanOverlay:        $('#scan-overlay'),
-  boScanFrame:          $('#scan-frame'),
-  boScanHint:           $('#scan-hint'),
-  boZoomButtons:        $$('.zoom-btn'),
-  btnBoSwitchCamera:    $('#btn-switch-camera'),
   btnBoFlash:           $('#btn-bo-flash'),
   btnBoManual:          $('#btn-bo-manual'),
   btnBoPause:           $('#btn-bo-pause'),
@@ -1002,7 +993,7 @@ async function handleModalSave() {
     dom.manualBarcode.select();
     dom.manualBarcode.style.borderColor = 'var(--danger)';
     setTimeout(() => dom.manualBarcode.style.borderColor = '', 1000);
-    showToast('⚠️ Please enter numeric digits (0-9) only', 'error');
+    showToast(settings.numericOnly !== false ? '⚠️ Please enter numeric digits (0-9) only' : '⚠️ Please enter a valid barcode', 'error');
     return;
   }
 
@@ -1059,6 +1050,10 @@ async function deletePhoto(id) {
   if (activeLightboxPhoto && activeLightboxPhoto.id === id) closeLightbox();
   const photo = photos.find(p => p.id === id);
   if (photo && photo._blobUrl) URL.revokeObjectURL(photo._blobUrl);
+  if (photo && retakeTargetBarcode && photo.barcode === retakeTargetBarcode) {
+    retakeTargetBarcode = null;
+    if (currentStep === STEP.PHOTO) setStep(STEP.PHOTO);
+  }
   photos = photos.filter(p => p.id !== id);
   await removePhoto(id);
   renderGallery();
@@ -1068,6 +1063,10 @@ async function deletePhoto(id) {
 
 async function clearAllPhotos() {
   closeLightbox();
+  if (retakeTargetBarcode) {
+    retakeTargetBarcode = null;
+    if (currentStep === STEP.PHOTO) setStep(STEP.PHOTO);
+  }
   photos.forEach(p => { if (p._blobUrl) URL.revokeObjectURL(p._blobUrl); });
   photos = [];
   await clearAllPersistedPhotos();
@@ -1144,7 +1143,7 @@ async function handleLightboxEditBarcode() {
   if (!newCode || newCode === currentCode) return;
 
   if (!isValidBarcode(newCode, true)) {
-    showToast('⚠️ Please enter numeric digits (0-9) only', 'error');
+    showToast(settings.numericOnly !== false ? '⚠️ Please enter numeric digits (0-9) only' : '⚠️ Please enter a valid barcode', 'error');
     return;
   }
 
@@ -1242,7 +1241,16 @@ function closeSettingsModal() {
 
 function applySettingsToUI() {
   dom.radioCompression.forEach(r => { r.checked = r.value === settings.compression; });
-  if (dom.chkNumericOnly) dom.chkNumericOnly.checked = settings.numericOnly !== false;
+  const isNumeric = settings.numericOnly !== false;
+  if (dom.chkNumericOnly) dom.chkNumericOnly.checked = isNumeric;
+  if (dom.manualBarcode) {
+    dom.manualBarcode.inputMode = isNumeric ? 'numeric' : 'text';
+    dom.manualBarcode.placeholder = isNumeric ? 'e.g. 8901234567890' : 'e.g. KB-89012345';
+  }
+  if (dom.inputBoManual) {
+    dom.inputBoManual.inputMode = isNumeric ? 'numeric' : 'text';
+    dom.inputBoManual.placeholder = isNumeric ? 'e.g. 8901234567890' : 'e.g. KB-89012345';
+  }
   dom.chkSound.checked = !!settings.sound;
   dom.chkShutterSound.checked = !!settings.shutterSound;
   dom.chkVibration.checked = !!settings.vibration;
@@ -1259,6 +1267,7 @@ function handleSaveSettings() {
   settings.shutterSound = dom.chkShutterSound.checked;
   settings.vibration = dom.chkVibration.checked;
   saveSettings();
+  applySettingsToUI();
   closeSettingsModal();
   showToast('Settings saved!', 'success');
 }
@@ -1328,7 +1337,9 @@ function getDailySerial() {
     data.serial = (data.serial || 0) + 1;
   }
 
-  localStorage.setItem(key, JSON.stringify(data));
+  try {
+    localStorage.setItem(key, JSON.stringify(data));
+  } catch (e) { /* ignore */ }
   return String(data.serial).padStart(3, '0');
 }
 
@@ -1516,16 +1527,18 @@ async function handleInstall() {
    Toast
    ═══════════════════════════════════════════ */
 let toastTimeout = null;
+let toastHideTimeout = null;
 function showToast(message, type = '') {
+  clearTimeout(toastTimeout);
+  clearTimeout(toastHideTimeout);
   dom.toast.textContent = message;
   dom.toast.className = 'toast' + (type ? ` ${type}` : '');
   dom.toast.hidden = false;
   void dom.toast.offsetWidth;
   dom.toast.classList.add('show');
-  clearTimeout(toastTimeout);
   toastTimeout = setTimeout(() => {
     dom.toast.classList.remove('show');
-    setTimeout(() => { dom.toast.hidden = true; }, 300);
+    toastHideTimeout = setTimeout(() => { dom.toast.hidden = true; }, 300);
   }, CONFIG.TOAST_DURATION_MS);
 }
 
@@ -1618,6 +1631,7 @@ let boPendingCount = 0;
 function openBarcodeOnlyMode() {
   closeSettingsModal();
   cancelBarcodeScanning();
+  retakeTargetBarcode = null;
   isBarcodeOnlyActive = true;
   isBoScanningPaused = false;
   lastBoScanCode = null;
@@ -1860,7 +1874,7 @@ function handleBoEditBarcode(id) {
   if (!newCode || newCode === item.barcode) return;
 
   if (!isValidBarcode(newCode, true)) {
-    showToast('⚠️ Please enter numeric digits (0-9) only', 'error');
+    showToast(settings.numericOnly !== false ? '⚠️ Please enter numeric digits (0-9) only' : '⚠️ Please enter a valid barcode', 'error');
     return;
   }
 
@@ -1909,7 +1923,7 @@ function handleBoManualAdd() {
     dom.inputBoManual.select();
     dom.inputBoManual.style.borderColor = 'var(--danger)';
     setTimeout(() => dom.inputBoManual.style.borderColor = '', 1000);
-    showToast('⚠️ Please enter numeric digits (0-9) only', 'error');
+    showToast(settings.numericOnly !== false ? '⚠️ Please enter numeric digits (0-9) only' : '⚠️ Please enter a valid barcode', 'error');
     return;
   }
 
@@ -1997,8 +2011,9 @@ function exportBoCsv() {
   const rows = sorted.map((item, idx) => {
     const d = new Date(item.timestamp);
     const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-    const timeStr = d.toLocaleTimeString();
-    return `${idx + 1},="${item.barcode}","${dateStr}","${timeStr}"`;
+    const timeStr = d.toLocaleTimeString().replace(/"/g, '""');
+    const safeCode = String(item.barcode).replace(/"/g, '""');
+    return `${idx + 1},="${safeCode}","${dateStr}","${timeStr}"`;
   });
   const csvContent = '\uFEFF' + ['Serial,Barcode,Date,Time', ...rows].join('\r\n');
   const dateStr = getLocalDateStr();
