@@ -57,4 +57,4 @@ The app uses a guided 2-step capture loop for every product:
 
 ## 📄 License
 
-MIT License — free for commercial and personal use.
+Proprietary & Confidential — Copyright © Kuberan Silks. All Rights Reserved. Unauthorized copying, distribution, modification, or reverse-engineering is strictly prohibited.

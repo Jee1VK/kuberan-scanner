@@ -4,6 +4,7 @@
   "controlFlowFlatteningThreshold": 0.5,
   "deadCodeInjection": false,
   "identifierNamesGenerator": "hexadecimal",
+  "randomIdentifiersPrefix": true,
   "renameGlobals": false,
   "selfDefending": true,
   "stringArray": true,

@@ -27,9 +27,12 @@ function run() {
     process.exit(1);
   }
 
-  const files = ['scanner.js', 'app.js'];
+  const files = [
+    { name: 'scanner.js', prefix: 'ks_scn_' },
+    { name: 'app.js', prefix: 'ks_app_' }
+  ];
 
-  for (const file of files) {
+  for (const { name: file, prefix } of files) {
     const srcPath = path.join(SRC_DIR, file);
     const destPath = path.join(ROOT_DIR, file);
 
@@ -41,8 +44,8 @@ function run() {
     const originalSize = fs.statSync(srcPath).size;
     console.log(`\n📦 Obfuscating ${file} (${(originalSize / 1024).toFixed(1)} KB)...`);
 
-    // Run javascript-obfuscator CLI
-    const cmd = `javascript-obfuscator "${srcPath}" --output "${destPath}" --config "${CONFIG_FILE}"`;
+    // Run javascript-obfuscator CLI with unique per-file identifier prefix to prevent top-level const collisions
+    const cmd = `javascript-obfuscator "${srcPath}" --output "${destPath}" --config "${CONFIG_FILE}" --identifiers-prefix "${prefix}"`;
     try {
       execSync(cmd, { stdio: 'inherit' });
     } catch (err) {
@@ -63,6 +66,20 @@ function run() {
       console.error(`❌ Syntax error in compiled ${file}!`, syntaxErr.message);
       process.exit(1);
     }
+  }
+
+  // Combined global-scope collision check (scanner.js + app.js share the same window scope)
+  try {
+    const combinedCheckPath = path.join(ROOT_DIR, '.combined_syntax_check.tmp.js');
+    const scnContent = fs.readFileSync(path.join(ROOT_DIR, 'scanner.js'), 'utf8');
+    const appContent = fs.readFileSync(path.join(ROOT_DIR, 'app.js'), 'utf8');
+    fs.writeFileSync(combinedCheckPath, `${scnContent}\n;\n${appContent}`, 'utf8');
+    execSync(`node -c "${combinedCheckPath}"`);
+    fs.unlinkSync(combinedCheckPath);
+    console.log('\n✓ Combined global-scope check passed (zero top-level identifier collisions)');
+  } catch (combErr) {
+    console.error('❌ Combined global-scope collision error!', combErr.message);
+    process.exit(1);
   }
 
   console.log('\n🛡️ Build completed successfully!');
