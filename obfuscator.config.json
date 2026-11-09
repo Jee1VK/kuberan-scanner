@@ -1,0 +1,25 @@
+{
+  "compact": true,
+  "controlFlowFlattening": true,
+  "controlFlowFlatteningThreshold": 0.5,
+  "deadCodeInjection": false,
+  "identifierNamesGenerator": "hexadecimal",
+  "renameGlobals": false,
+  "selfDefending": true,
+  "stringArray": true,
+  "stringArrayEncoding": ["base64"],
+  "stringArrayThreshold": 0.8,
+  "splitStrings": true,
+  "splitStringsChunkLength": 5,
+  "transformObjectKeys": false,
+  "numbersToExpressions": true,
+  "disableConsoleOutput": false,
+  "debugProtection": false,
+  "domainLock": [
+    "jee1vk.github.io",
+    "kuberansilks.com",
+    "localhost",
+    "127.0.0.1"
+  ],
+  "domainLockRedirectUrl": "https://kuberansilks.com/"
+}

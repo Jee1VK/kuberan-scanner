@@ -8,3 +8,9 @@ desktop.ini
 .idea/
 *.swp
 *.swo
+
+# Node
+node_modules/
+
+# Source code protection (Safe on local NAS; prevents raw un-obfuscated source from leaking to public GitHub)
+src/
