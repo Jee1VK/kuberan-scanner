@@ -3,7 +3,7 @@
  * Cache-first strategy for app shell, network-first for external resources
  */
 
-const CACHE_NAME = 'kuberan-scanner-v31';
+const CACHE_NAME = 'kuberan-scanner-v32';
 
 /** App shell files to pre-cache */
 const APP_SHELL = [
@@ -25,7 +25,7 @@ const EXTERNAL_RESOURCES = [
 
 /* ── Install: Pre-cache app shell and dependencies (bypassing browser HTTP cache) ── */
 self.addEventListener('install', (event) => {
-  console.log('[SW] Installing v31…');
+  console.log('[SW] Installing v32…');
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then(async (cache) => {
@@ -45,7 +45,7 @@ self.addEventListener('install', (event) => {
 
 /* ── Activate: Clean up old caches immediately ── */
 self.addEventListener('activate', (event) => {
-  console.log('[SW] Activating v31…');
+  console.log('[SW] Activating v32…');
   event.waitUntil(
     caches.keys()
       .then((keys) => {
@@ -125,12 +125,13 @@ async function networkFirst(request) {
 }
 
 /**
- * Stale-while-revalidate: serve from cache immediately for speed,
- * then update cache in background from network for next time.
+ * Stale-while-revalidate: serve from exact cache match immediately for speed,
+ * while updating cache in background from network for versioned assets (?v=...).
+ * Falls back to unversioned cache ({ ignoreSearch: true }) only when offline.
  */
 async function staleWhileRevalidate(request) {
   const cache = await caches.open(CACHE_NAME);
-  const cached = await cache.match(request, { ignoreSearch: true });
+  const cached = await cache.match(request);
 
   // Fetch from network in the background (no-cache to bypass stale browser HTTP cache)
   const fetchPromise = fetch(request, { cache: 'no-cache' })
@@ -142,8 +143,9 @@ async function staleWhileRevalidate(request) {
     })
     .catch(() => null);
 
-  // Return cached version immediately, or wait for network
-  return cached || await fetchPromise || new Response('Resource unavailable offline', {
+  // Return exact cached version immediately, or wait for network fetch,
+  // falling back to unversioned cache only when offline or network fails.
+  return cached || await fetchPromise || await cache.match(request, { ignoreSearch: true }) || new Response('Resource unavailable offline', {
     status: 503,
     headers: { 'Content-Type': 'text/plain' }
   });
